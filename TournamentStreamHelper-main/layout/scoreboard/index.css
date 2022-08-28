@@ -124,7 +124,7 @@ body {
 
 
 .player.container {
-  width: 490px;
+  width: 495px; /* original 500px */
   height: 54px; /* original 64px */
   top: 42px; 
   padding: 8px 8px;
