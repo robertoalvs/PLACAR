@@ -46,6 +46,7 @@ body {
   height: 1080px;
 }
 /* ======================== Background do placar ==============*/
+
 .container {
   position: absolute;
   color: var(--text-color);
@@ -53,8 +54,8 @@ body {
   display: flex;
   box-sizing: border-box;
   border-radius: var(--border-radius);
-  background: url(../scoreboard/600546-ceu-azul-da-noite-abstrata-com-fundo-do-cosmos-das-estrelas-vetor.jpg) center;
-  
+  background: url(../scoreboard/600546-ceu-azul-da-noite-abstrata-com-fundo-do-cosmos-das-estrelas-vetor.jpg) bottom right;
+  /* background-image: linear-gradient(to right, rgb(72, 72, 241), black); */
   align-items: center;
 }
 
@@ -72,6 +73,49 @@ body {
 
 .p2.container > div:first-child {
   margin-right: 8px;
+}
+
+/* Cor do score play 1 ===================*/
+
+.p1 .score {
+  color: black;
+  font-weight: bolder;
+ /* color: var(--p1-score-color); */
+  /* background: var(--p1-score-bg-color); */
+  background-color: yellow;
+}
+
+.sponsor {
+  margin-right: 6px;
+}
+
+.p1 .sponsor {
+  color: var(--p1-sponsor-color);
+}
+
+.p1 .pronoun {
+  color: var(--p1-sponsor-color);
+}
+
+
+/* Cor do score play 2 ===============================*/
+
+.p2 .score {
+  /* color: var(--p2-score-color); */
+  color: black;
+  font-weight: bolder;
+  margin-left: -8px;
+  margin-right: 0;
+  /* background: var(--p2-score-bg-color); */
+  background-color: yellow;
+}
+
+.p2 .sponsor {
+  color: var(--p2-sponsor-color);
+}
+
+.p2 .pronoun {
+  color: var(--p2-sponsor-color);
 }
 
 /* -------------------------------------------------------- */
@@ -458,42 +502,6 @@ body {
   letter-spacing: normal;
 }
 
-/* Cor do score play 1 ===================*/
-.p1 .score {
-  color: var(--p1-score-color);
-  background: var(--p1-score-bg-color);
-}
-
-.sponsor {
-  margin-right: 6px;
-}
-
-.p1 .sponsor {
-  color: var(--p1-sponsor-color);
-}
-
-.p1 .pronoun {
-  color: var(--p1-sponsor-color);
-}
-
-
-
-
-/* Cor do score play 2 ===============================*/
-.p2 .score {
-  color: var(--p2-score-color);
-  margin-left: -8px;
-  margin-right: 0;
-  background: var(--p2-score-bg-color);
-}
-
-.p2 .sponsor {
-  color: var(--p2-sponsor-color);
-}
-
-.p2 .pronoun {
-  color: var(--p2-sponsor-color);
-}
 
 .losers {
   display: inline-flex;
