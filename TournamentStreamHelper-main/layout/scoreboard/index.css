@@ -84,7 +84,7 @@ body {
   font-weight: bolder;
  /* color: var(--p1-score-color); */
   /* background: var(--p1-score-bg-color); */
-  background-color: yellow;
+  background-image: linear-gradient(to bottom, yellow, white);
 }
 
 .sponsor {
