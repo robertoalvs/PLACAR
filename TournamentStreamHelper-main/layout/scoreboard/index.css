@@ -97,7 +97,7 @@ body {
   font-family: var(--fonte-local);
  /* color: var(--p1-score-color); */
   /* background: var(--p1-score-bg-color); */
-  background-image: yellow;
+  background-color: yellow;
 }
 
 .sponsor {
