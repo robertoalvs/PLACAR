@@ -16,8 +16,14 @@
 @font-face {
 
   font-family: 'renegade';
-  src: url(../scoreboard/fontes/19th_century_renegade/19th_Century_Renegade.otf) format('opentype');
+  src: url(../include/19th_Century_Renegade.otf) format('opentype');
 }
+:root {
+
+  --fonte-local: 'renegade', cursive;
+}
+
+
 
 body {
   font-family: NotoSans;
@@ -91,7 +97,7 @@ body {
   font-family: var(--fonte-local);
  /* color: var(--p1-score-color); */
   /* background: var(--p1-score-bg-color); */
-  background-image: linear-gradient(to bottom, yellow, white);
+  background-image: yellow;
 }
 
 .sponsor {
