@@ -95,6 +95,7 @@ body {
   color: black;
   font-weight: bolder;
   font-family: var(--fonte-local2);
+  text-transform: uppercase;
  /* color: var(--p1-score-color); */
   /* background: var(--p1-score-bg-color); */
   background-color: yellow;
@@ -361,7 +362,7 @@ body {
   height: 48px;
 }
 
-.info.container.bottom {
+/* .info.container.bottom {
   top: 42px;
   left: 42px;
   display: flex;
@@ -372,7 +373,7 @@ body {
   height: 64px;
   font-size: 20px;
   padding: 4px 10px;
-}
+} */
 
 .phase {
   font-size: 14px;
@@ -386,13 +387,13 @@ body {
   width: 100%;
 }
 
-.fgc .info.container.bottom {
+/* .fgc .info.container.bottom {
   top: unset;
   bottom: 6px;
   padding: 16px 24px;
   left: 50%;
   transform: translateX(-50%);
-}
+} */
 
 .bblue .info.container.bottom {
   top: 180px;
