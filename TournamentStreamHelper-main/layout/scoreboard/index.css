@@ -93,8 +93,8 @@ body {
 
 .p1 .score {
   color: black;
+  text-shadow: 2px 2px 2px black;
   font-weight: bolder;
-  font-family: var(--fonte-local2);
   text-transform: uppercase;
  /* color: var(--p1-score-color); */
   /* background: var(--p1-score-bg-color); */
