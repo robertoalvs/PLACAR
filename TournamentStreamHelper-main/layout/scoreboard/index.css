@@ -94,7 +94,8 @@ body {
 .p1 .score {
   color: black;
   font-weight: bolder;
-  font-family: var(--fonte-local);
+  font-size: 3em;
+  font: var(--fonte-local);
  /* color: var(--p1-score-color); */
   /* background: var(--p1-score-bg-color); */
   background-color: yellow;
