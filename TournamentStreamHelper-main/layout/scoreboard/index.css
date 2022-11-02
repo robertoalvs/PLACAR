@@ -335,7 +335,7 @@ body {
   flex-direction: column;
   height: 36px;
   padding: 8px 8px;
-} */
+}  */
 
 .tournament_name {
   font-size: 18px;
@@ -344,13 +344,13 @@ body {
   overflow: hidden;
 }
 
-.fgc .info.container.top {
+/* .fgc .info.container.top {
   top: 8px;
   height: 34px;
   width: 300px;
   font-size: 16px;
   padding: 8px 16px;
-}
+} */
 
 .tekken7 .info.container.top {
   height: 48px;
