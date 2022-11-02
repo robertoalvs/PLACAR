@@ -13,6 +13,18 @@
   src: url("../include/Roboto-Regular.ttf") format("truetype");
 }
 
+@font-face {
+
+  font-family: 'renegade';
+  src: url(../scoreboard/fontes/19th_century_renegade/19th_Century_Renegade.otf) format("opentype");
+}
+
+:root {
+
+  --fonte-local: 'renegade';
+  
+}
+
 body {
   font-family: NotoSans;
   font-weight: bold;
@@ -82,7 +94,7 @@ body {
 .p1 .score {
   color: black;
   font-weight: bolder;
-  font-size: 2em;
+  font-family: var(--fonte-local);
  /* color: var(--p1-score-color); */
   /* background: var(--p1-score-bg-color); */
   background-image: linear-gradient(to bottom, yellow, white);
