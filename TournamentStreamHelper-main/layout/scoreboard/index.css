@@ -82,6 +82,7 @@ body {
 .p1 .score {
   color: black;
   font-weight: bolder;
+  font-size: 2em;
  /* color: var(--p1-score-color); */
   /* background: var(--p1-score-bg-color); */
   background-image: linear-gradient(to bottom, yellow, white);
