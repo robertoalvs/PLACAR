@@ -26,7 +26,8 @@
 
 
 body {
-  font-family: NotoSans;
+  /* font-family: NotoSans; */
+  font-family: var(--fonte-local);
   font-weight: bold;
   opacity: 0;
   overflow: hidden;
@@ -94,8 +95,6 @@ body {
 .p1 .score {
   color: black;
   font-weight: bolder;
-  font-size: 3em;
-  font: var(--fonte-local);
  /* color: var(--p1-score-color); */
   /* background: var(--p1-score-bg-color); */
   background-color: yellow;
