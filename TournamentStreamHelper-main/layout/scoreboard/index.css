@@ -16,13 +16,12 @@
 @font-face {
 
   font-family: 'renegade';
-  src: url(../scoreboard/fontes/19th_century_renegade/19th_Century_Renegade.otf) format("opentype");
+  src: url(../scoreboard/fontes/19th_century_renegade/19th_Century_Renegade.otf) format('opentype');
 }
 
 :root {
 
-  --fonte-local: 'renegade';
-  
+  --fonte-local: 'renegade', cursive;
 }
 
 body {
