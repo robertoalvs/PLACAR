@@ -93,7 +93,8 @@ body {
 
 .p1 .score {
   color: black;
-  text-shadow: 2px 2px 2px black;
+  text-shadow: 1px 1px 1px black;
+  font-size: 50px;
   font-weight: bolder;
   text-transform: uppercase;
  /* color: var(--p1-score-color); */
@@ -119,6 +120,8 @@ body {
 .p2 .score {
   /* color: var(--p2-score-color); */
   color: black;
+  text-shadow: 1px 1px 1px black;
+  font-size: 50px;
   font-weight: bolder;
   margin-left: -8px;
   margin-right: 0;
