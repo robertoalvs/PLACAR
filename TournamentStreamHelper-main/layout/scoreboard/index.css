@@ -24,13 +24,6 @@
   src: url(../include/2020_Outline_Fortune_Kei.ttf) format('truetype');
 
 }
-:root {
-
-  --fonte-local: 'renegade', cursive;
-  --fonte-local2: '2020', cursive;
-}
-
-
 
 body {
   font-family: NotoSans;

@@ -17,7 +17,9 @@
 
 /* Main theme -- Dark Gradient */
 :root {
-  --fonte-local: 'renegade', cursive;
+
+  --fonte-local: 'renegade';
+  --fonte-local2: '2020';
   --font: "NotoSans";
   --border-radius: 16px;
   --text-color: white;
