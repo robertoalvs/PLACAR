@@ -15,13 +15,13 @@
 
 @font-face {
 
-  font-family: 'renegade';
-  src: url(../include/19th_Century_Renegade.otf) format('opentype');
+  font-family: "renegade";
+  src: url("../include/19th_Century_Renegade.otf") format("opentype");
 }
 @font-face {
 
-  font-family: '2020';
-  src: url(../include/2020_Outline_Fortune_Kei.ttf) format('truetype');
+  font-family: "2020";
+  src: url("../include/2020_Outline_Fortune_Kei.ttf") format("truetype");
 
 }
 
