@@ -101,7 +101,7 @@ body {
   text-transform: uppercase;
  /* color: var(--p1-score-color); */
   /* background: var(--p1-score-bg-color); */
-  background-color: yellow;
+  background-color: rgb(255, 238, 0);
 }
 
 .sponsor {
@@ -128,7 +128,7 @@ body {
   margin-left: -8px;
   margin-right: 0;
   /* background: var(--p2-score-bg-color); */
-  background-color: yellow;
+  background-color: rgb(255, 238, 0);
 }
 
 .p2 .sponsor {
