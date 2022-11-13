@@ -96,7 +96,7 @@ body {
 .p1 .score {
   color: black;
   text-shadow: 1px 1px 1px black;
-  font-size: 100px;
+  font-size: 50px;
   font-weight: bolder;
   text-transform: uppercase;
  /* color: var(--p1-score-color); */
@@ -228,7 +228,8 @@ body {
 }
 
 .name_twitter .name {
-  font-size: 24px;
+  /* font-size: 24px; */
+  font-size: 64px;
 }
 
 .fgc .name_twitter .name {
