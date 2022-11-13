@@ -67,9 +67,11 @@ body {
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
-  border-radius: var(--border-radius);
+  border-radius: 3px;
+  /* border-radius: var(--border-radius); */
   /* background: url(../scoreboard/600546-ceu-azul-da-noite-abstrata-com-fundo-do-cosmos-das-estrelas-vetor.jpg) bottom right; */
-  background-image: linear-gradient(to left, rgb(72, 72, 241), black);
+  /* background-image: linear-gradient(to left, rgb(72, 72, 241), black); */
+  background-image: url(../scoreboard/images.jpeg);
   align-items: center;
 }
 
@@ -142,7 +144,7 @@ body {
 
 .player.container {
   width: 495px; /* original 500px */
-  height: 54px; /* original 64px */
+  height: 48px; /* original 64px */
   top: 42px; 
   padding: 8px 8px;
 }
