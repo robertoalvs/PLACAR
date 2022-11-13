@@ -96,7 +96,7 @@ body {
 .p1 .score {
   color: black;
   text-shadow: 1px 1px 1px black;
-  font-size: 50px;
+  font-size: 100px;
   font-weight: bolder;
   text-transform: uppercase;
  /* color: var(--p1-score-color); */
