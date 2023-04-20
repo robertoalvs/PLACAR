@@ -367,7 +367,7 @@ body {
   top: 2px;
   height: 48px;
 }
-
+/* ========================================= parte de baixo do placar ft -10 ==== */
 .info.container.bottom {
   top: 42px;
   left: 42px;
@@ -379,6 +379,7 @@ body {
   height: 64px;
   font-size: 20px;
   padding: 4px 10px;
+  border-radius: 10px;
 } 
 
 .phase {
@@ -392,7 +393,7 @@ body {
   letter-spacing: 2px;
   width: 100%;
 }
-/* ===================================== */
+
 .fgc .info.container.bottom {
   top: unset;
   bottom: 6px;
@@ -405,6 +406,8 @@ body {
   top: 180px;
   bottom: unset;
 }
+
+/* ===================================== ========================*/
 
 .icon {
   flex-shrink: 0;
