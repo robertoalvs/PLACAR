@@ -67,11 +67,12 @@ body {
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
-  border-radius: 3px;
+  border-radius: 5px;
   /* border-radius: var(--border-radius); */
   /* background: url(../scoreboard/600546-ceu-azul-da-noite-abstrata-com-fundo-do-cosmos-das-estrelas-vetor.jpg) bottom right; */
   /* background-image: linear-gradient(to left, rgb(72, 72, 241), black); */
-  background-image: url(../scoreboard/images.jpeg);
+  /* background-image: url(../scoreboard/images.jpeg); */
+  background-image: url(../scoreboard/backnew.jpg);
   align-items: center;
 }
 
