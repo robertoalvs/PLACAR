@@ -377,7 +377,7 @@ body {
   flex-direction: column;
   width: 280px;
   height: 64px;
-  font-size: 70px;
+  font-size: 20px;
   padding: 4px 10px;
 } 
 
@@ -388,7 +388,7 @@ body {
 }
 
 .match {
-  font-size: 18px;
+  font-size: 48px;
   letter-spacing: 2px;
   width: 100%;
 }
