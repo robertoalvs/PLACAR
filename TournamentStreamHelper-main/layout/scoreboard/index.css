@@ -395,7 +395,7 @@ body {
 /* ===================================== */
 .fgc .info.container.bottom {
   top: unset;
-  bottom: 6px;
+  bottom: 60px;
   padding: 16px 24px;
   left: 50%;
   transform: translateX(-50%);
