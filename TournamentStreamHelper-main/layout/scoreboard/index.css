@@ -267,8 +267,8 @@ body {
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-position: center;
   background: var(--text-color);
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   margin-right: 6px;
 }
 
