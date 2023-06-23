@@ -461,13 +461,13 @@ body {
   height: 48px;
 }
 
-/*.sf6 .info.container.top {
+.sf6 .info.container.top {
   width: 440px;
   top: 0;
   border-top-right-radius: 0;
   border-top-left-radius: 0;
   height: 30px;
-} */
+} 
 
 .info.container.bottom {
   top: 42px;
