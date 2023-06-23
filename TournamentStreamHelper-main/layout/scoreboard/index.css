@@ -512,7 +512,7 @@ body {
   transform: translateX(-50%);
 }
 
-.sf6 .info.container.bottom {
+/*.sf6 .info.container.bottom {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
   top: unset;
@@ -520,7 +520,7 @@ body {
   width: 400px;
   height: 64px;
   padding: 0px 20px;
-}
+}*/
 
 .bblue .info.container.bottom {
   top: 180px;
@@ -571,10 +571,10 @@ body {
   background-size: cover;
 }
 
-/*.sf6 .icon div:not(.text) {
+.sf6 .icon div:not(.text) {
   height: 34px;
   width: 34px;
-} */
+}
 
 .flags_container {
   display: flex;
