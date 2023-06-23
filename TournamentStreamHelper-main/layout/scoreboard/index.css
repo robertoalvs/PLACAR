@@ -180,11 +180,11 @@ body {
   width: 450px;
 }
 
-/*.sf6.online .chips {
+.sf6.online .chips {
   width: 270px;
   background: var(--bg-color);
   border-radius: calc(var(--border-radius) / 2);
-} */
+}
 
 .chip {
   overflow: hidden;
@@ -227,10 +227,10 @@ body {
   justify-content: right;
 }
 
-.sf6.online .seed {
+/*.sf6.online .seed {
   position: absolute;
   top: 106px;
-}
+}*/
 
 .sf6.online .p1 .seed {
   left: 0;
