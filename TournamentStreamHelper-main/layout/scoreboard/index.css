@@ -571,10 +571,10 @@ body {
   background-size: cover;
 }
 
-.sf6 .icon div:not(.text) {
+/*.sf6 .icon div:not(.text) {
   height: 34px;
   width: 34px;
-}
+} */
 
 .flags_container {
   display: flex;
@@ -657,9 +657,13 @@ body {
   width: 48px;
 }
 
+
+/* =================== placar valor ============== */
 .sf6 .score {
   font-size: 44px;
 }
+/* ======================= ================== */
+
 
 .p1 .score {
   color: var(--p1-score-color);
