@@ -171,20 +171,20 @@ body {
   overflow: hidden;
 }
 
-/*.sf6 .chips {
+.sf6 .chips {
   top: 106px;
   height: 32px;
-} */
+}
 
 .sf6.offline .chips {
   width: 450px;
 }
 
-.sf6.online .chips {
+/*.sf6.online .chips {
   width: 270px;
   background: var(--bg-color);
   border-radius: calc(var(--border-radius) / 2);
-}
+} */
 
 .chip {
   overflow: hidden;
