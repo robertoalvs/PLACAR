@@ -381,9 +381,8 @@ body {
 
 .fgc .logo {
   top: 145px;
-  width: 140px;
-  height: 10px;
-  opacity: 1;
+  width: 120px;
+  height: 120px;
 }
 
 .fgc.thin .logo {
@@ -401,8 +400,9 @@ body {
 }
 
 .sf6 .logo {
-  width: 160px;
-  height: 160px;
+  width: 170px;
+  height: 170px;
+  opacity: 1;
   top: 924px;
 }
 
