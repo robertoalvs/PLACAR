@@ -23,7 +23,13 @@ class TSHTournamentDataProviderSignals(QObject):
     twitch_username_updated = pyqtSignal()
     user_updated = pyqtSignal()
     recent_sets_updated = pyqtSignal(dict)
-
+    last_sets_updated = pyqtSignal(dict)
+    history_sets_updated = pyqtSignal(dict)
+    get_sets_finished = pyqtSignal(list)
+    tournament_phases_updated = pyqtSignal(list)
+    tournament_phasegroup_updated = pyqtSignal(dict)
+    game_changed = pyqtSignal(int)
+    stream_queue_loaded = pyqtSignal(dict)
 
 class TSHTournamentDataProvider:
     instance: "TSHTournamentDataProvider" = None
@@ -33,6 +39,8 @@ class TSHTournamentDataProvider:
         self.signals: TSHTournamentDataProviderSignals = TSHTournamentDataProviderSignals()
         self.entrantsModel: QStandardItemModel = None
         self.threadPool = QThreadPool()
+
+        self.signals.game_changed.connect(self.SetGameFromProvider)
 
         TSHGameAssetManager.instance.signals.onLoadAssets.connect(
             self.SetGameFromProvider)
@@ -54,25 +62,31 @@ class TSHTournamentDataProvider:
         if self.provider and self.provider.url == url:
             return
 
-        if "start.gg" in url:
+        if url is not None and "start.gg" in url:
             TSHTournamentDataProvider.instance.provider = StartGGDataProvider(
                 url, self.threadPool, self)
-        elif "challonge.com" in url:
+        elif url is not None and "challonge.com" in url:
             TSHTournamentDataProvider.instance.provider = ChallongeDataProvider(
                 url, self.threadPool, self)
         else:
             print("Unsupported provider...")
-            return
-
-        tournamentData = TSHTournamentDataProvider.instance.provider.GetTournamentData()
-        tournamentData.update({"initial_load": initialLoading})
-        TSHTournamentDataProvider.instance.signals.tournament_data_updated.emit(
-            tournamentData)
-
-        TSHTournamentDataProvider.instance.provider.GetEntrants()
-        TSHTournamentDataProvider.instance.signals.tournament_changed.emit()
-
+            TSHTournamentDataProvider.instance.provider = None
+        
         SettingsManager.Set("TOURNAMENT_URL", url)
+
+        if self.provider is not None:
+            self.GetTournamentData(initialLoading=initialLoading)
+            self.GetTournamentPhases()
+
+            TSHTournamentDataProvider.instance.provider.GetEntrants()
+            TSHTournamentDataProvider.instance.signals.tournament_changed.emit()
+
+            TSHTournamentDataProvider.instance.SetGameFromProvider()
+        else:
+            TSHTournamentDataProvider.instance.signals.tournament_data_updated.emit({})
+            TSHTournamentDataProvider.instance.signals.tournament_phases_updated.emit([])
+            TSHTournamentDataProvider.instance.signals.tournament_changed.emit()
+            TSHGameAssetManager.instance.LoadGameAssets(0)
 
     def SetStartggEventSlug(self, mainWindow):
         inp = QDialog(mainWindow)
@@ -161,99 +175,35 @@ class TSHTournamentDataProvider:
             SettingsManager.Set(providerName+"_user", text)
             TSHTournamentDataProvider.instance.signals.user_updated.emit()
 
-    def LoadSets(self, mainWindow):
-        sets = TSHTournamentDataProvider.instance.provider.GetMatches()
+    def GetTournamentData(self, initialLoading=False):
+        worker = Worker(self.provider.GetTournamentData)
+        worker.signals.result.connect(lambda tournamentData: [
+            tournamentData.update({"initial_load": initialLoading}),
+            TSHTournamentDataProvider.instance.signals.tournament_data_updated.emit(tournamentData)
+        ])
+        self.threadPool.start(worker)
+    
+    def GetTournamentPhases(self):
+        worker = Worker(self.provider.GetTournamentPhases)
+        worker.signals.result.connect(lambda tournamentPhases: [
+            TSHTournamentDataProvider.instance.signals.tournament_phases_updated.emit(tournamentPhases)
+        ])
+        self.threadPool.start(worker)
+    
+    def GetTournamentPhaseGroup(self, id):
+        worker = Worker(self.provider.GetTournamentPhaseGroup, **{"id": id})
+        worker.signals.result.connect(lambda phaseGroupData: [
+            TSHTournamentDataProvider.instance.signals.tournament_phasegroup_updated.emit(phaseGroupData)
+        ])
+        self.threadPool.start(worker)
 
-        model = QStandardItemModel()
-        horizontal_labels = ["Stream", "Wave", "Title", "Player 1", "Player 2"]
-        horizontal_labels[0] = QApplication.translate("app", "Stream")
-        horizontal_labels[1] = QApplication.translate("app", "Phase")
-        horizontal_labels[2] = QApplication.translate("app", "Match")
-        horizontal_labels[3] = QApplication.translate(
-            "app", "Player {0}").format(1)
-        horizontal_labels[4] = QApplication.translate(
-            "app", "Player {0}").format(2)
-        model.setHorizontalHeaderLabels(horizontal_labels)
-
-        if sets is not None:
-            for s in sets:
-                dataItem = QStandardItem(str(s.get("id")))
-                dataItem.setData(s, Qt.ItemDataRole.UserRole)
-
-                player_names = [s.get("p1_name"), s.get("p2_name")]
-
-                try:
-                    # For doubles, use team name + entrants names
-                    if len(s.get("entrants", [[]])[0]) > 1:
-                        for t, team in enumerate(s.get("entrants")):
-                            pnames = []
-                            for p, player in enumerate(s.get("entrants")[t]):
-                                pnames.append(player.get("gamerTag"))
-                            player_names[t] += " "+QApplication.translate(
-                                "punctuation", "(")+", ".join(pnames)+QApplication.translate("punctuation", ")")
-                except Exception as e:
-                    traceback.print_exc()
-
-                model.appendRow([
-                    QStandardItem(s.get("stream", "")),
-                    QStandardItem(s.get("tournament_phase", "")),
-                    QStandardItem(s["round_name"]),
-                    QStandardItem(player_names[0]),
-                    QStandardItem(player_names[1]),
-                    dataItem
-                ])
-
-        mainWindow.startGGSetSelecDialog = QDialog(mainWindow)
-        mainWindow.startGGSetSelecDialog.setWindowTitle(
-            QApplication.translate("app", "Select a set"))
-        mainWindow.startGGSetSelecDialog.setWindowModality(Qt.WindowModal)
-
-        layout = QVBoxLayout()
-        mainWindow.startGGSetSelecDialog.setLayout(layout)
-
-        proxyModel = QSortFilterProxyModel()
-        proxyModel.setSourceModel(model)
-        proxyModel.setFilterKeyColumn(-1)
-        proxyModel.setFilterCaseSensitivity(False)
-
-        def filterList(text):
-            proxyModel.setFilterFixedString(text)
-
-        searchBar = QLineEdit()
-        searchBar.setPlaceholderText("Filter...")
-        layout.addWidget(searchBar)
-        searchBar.textEdited.connect(filterList)
-
-        mainWindow.startggSetSelectionItemList = QTableView()
-        layout.addWidget(mainWindow.startggSetSelectionItemList)
-        mainWindow.startggSetSelectionItemList.setSortingEnabled(True)
-        mainWindow.startggSetSelectionItemList.setSelectionBehavior(
-            QAbstractItemView.SelectRows)
-        mainWindow.startggSetSelectionItemList.setEditTriggers(
-            QAbstractItemView.NoEditTriggers)
-        mainWindow.startggSetSelectionItemList.setModel(proxyModel)
-        mainWindow.startggSetSelectionItemList.setColumnHidden(5, True)
-        mainWindow.startggSetSelectionItemList.horizontalHeader().setStretchLastSection(True)
-        mainWindow.startggSetSelectionItemList.horizontalHeader(
-        ).setSectionResizeMode(QHeaderView.Stretch)
-        mainWindow.startggSetSelectionItemList.resizeColumnsToContents()
-
-        btOk = QPushButton("OK")
-        layout.addWidget(btOk)
-        btOk.clicked.connect(
-            lambda x: TSHTournamentDataProvider.instance.LoadSelectedSet(
-                mainWindow)
-        )
-
-        mainWindow.startGGSetSelecDialog.resize(1200, 500)
-
-        qr = mainWindow.startGGSetSelecDialog.frameGeometry()
-        cp = QDesktopWidget().availableGeometry().center()
-        qr.moveCenter(cp)
-        print(qr, cp)
-        mainWindow.startGGSetSelecDialog.move(qr.topLeft())
-
-        mainWindow.startGGSetSelecDialog.show()
+    def LoadSets(self, showFinished):
+        worker = Worker(self.provider.GetMatches, **{"getFinished": showFinished})
+        worker.signals.result.connect(lambda data: [
+            print(data),
+            self.signals.get_sets_finished.emit(data)
+        ])
+        self.threadPool.start(worker)
 
     def LoadStreamSet(self, mainWindow, streamName):
         streamSet = TSHTournamentDataProvider.instance.provider.GetStreamMatchId(
@@ -273,19 +223,6 @@ class TSHTournamentDataProvider:
 
         _set["auto_update"] = "user"
         mainWindow.signals.NewSetSelected.emit(_set)
-
-    def LoadSelectedSet(self, mainWindow):
-        row = 0
-
-        if len(mainWindow.startggSetSelectionItemList.selectionModel().selectedRows()) > 0:
-            row = mainWindow.startggSetSelectionItemList.selectionModel().selectedRows()[
-                0].row()
-        setId = mainWindow.startggSetSelectionItemList.model().index(
-            row, 5).data(Qt.ItemDataRole.UserRole)
-        mainWindow.startGGSetSelecDialog.close()
-
-        setId["auto_update"] = "set"
-        mainWindow.signals.NewSetSelected.emit(setId)
 
     def GetMatch(self, mainWindow, setId, overwrite=True):
         worker = Worker(self.provider.GetMatch, **
@@ -310,6 +247,32 @@ class TSHTournamentDataProvider:
             callback.emit(data)
         ])
         self.threadPool.start(worker)
+
+    def GetLastSets(self, playerId, playerNumber):
+        worker = Worker(self.provider.GetLastSets, **{
+            "playerID": playerId[0],
+            "playerNumber": playerNumber,
+            "callback": self.signals.last_sets_updated
+        })
+        self.threadPool.start(worker)
+
+    def GetPlayerHistoryStandings(self, playerId, playerNumber, gameType):
+        worker = Worker(self.provider.GetPlayerHistoryStandings, **{
+            "playerID": playerId[0],
+            "playerNumber": playerNumber,
+            "gameType": gameType,
+            "callback": self.signals.history_sets_updated
+        })
+        self.threadPool.start(worker) 
+
+    def GetStreamQueue(self):
+
+        worker = Worker(self.provider.GetStreamQueue)
+        worker.signals.result.connect(lambda streamQueue: [
+            TSHTournamentDataProvider.instance.signals.stream_queue_loaded.emit(streamQueue)
+        ])
+        self.threadPool.start(worker)
+        
 
     def UiMounted(self):
         if SettingsManager.Get("TOURNAMENT_URL"):

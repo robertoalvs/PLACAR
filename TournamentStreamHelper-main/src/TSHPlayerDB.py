@@ -2,7 +2,6 @@ import copy
 from multiprocessing import Lock
 import os
 import json
-from turtle import update
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
@@ -52,6 +51,7 @@ class TSHPlayerDB:
             print(traceback.format_exc())
 
     def AddPlayers(players, overwrite=False):
+        print(f"Adding players to DB: {len(players)}")
         for player in players:
             if player is not None:
                 tag = player.get(

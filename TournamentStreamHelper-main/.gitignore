@@ -46,3 +46,10 @@ THS.includes
 
 tmp/*
 .qt_for_python/*
+layout_*/
+src/layout/ui_*.py
+src/layout/*_ui.py
+layout_*/*
+build/main/*
+TSH_old.exe
+main.spec

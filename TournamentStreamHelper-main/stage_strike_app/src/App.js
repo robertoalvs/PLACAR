@@ -1,6 +1,7 @@
 import logo from "./logo.svg";
 import "./App.css";
 import { Component } from "react";
+import ReactDOMServer from "react-dom/server";
 import "./NoSleep";
 import {
   useTheme,
@@ -23,9 +24,12 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  Fab,
 } from "@mui/material";
 import { Box } from "@mui/system";
 import i18n from "./i18n/config";
+import { Check, Handshake, Redo, RestartAlt, Undo } from "@mui/icons-material";
+import i18next from "i18next";
 
 const defaultTheme = createTheme({
   palette: {
@@ -37,11 +41,11 @@ let darkTheme = createTheme({
   palette: {
     mode: "dark",
     p1color: defaultTheme.palette.augmentColor({
-      color: { main: "#ff3837ff" },
+      color: { main: "#ff7a6d" },
       name: "p1color",
     }),
     p2color: defaultTheme.palette.augmentColor({
-      color: { main: "#1255a3ff" },
+      color: { main: "#29b6f6" },
       name: "p2color",
     }),
   },
@@ -65,30 +69,26 @@ class App extends Component {
     phase: null,
     match: null,
     bestOf: null,
-    timestamp: 0,
-    serverTimestamp: 0,
+    gentlemans: false,
+    canUndo: false,
+    canRedo: false,
   };
 
-  Initialize(resetStreamScore = false) {
-    this.setState({
-      currGame: 0,
-      currPlayer: -1,
-      currStep: 0,
-      strikedStages: [[]],
-      strikedBy: [[], []],
-      stagesWon: [[], []],
-      stagesPicked: [],
-      selectedStage: null,
-      lastWinner: -1,
-      serverTimestamp: 0,
+  Initialize() {
+    fetch("http://" + window.location.hostname + ":5000/stage_strike_reset", {
+      method: "POST",
+      contentType: "application/json",
     });
-    if (resetStreamScore) this.ResetStreamScore();
   }
 
   GetStage(stage) {
-    let found = this.state.ruleset.neutralStages.find((s) => s.name === stage);
+    let found = this.state.ruleset.neutralStages.find(
+      (s) => s.codename === stage
+    );
     if (found) return found;
-    found = this.state.ruleset.counterpickStages.find((s) => s.name === stage);
+    found = this.state.ruleset.counterpickStages.find(
+      (s) => s.codename === stage
+    );
     if (found) return found;
     return null;
   }
@@ -140,40 +140,28 @@ class App extends Component {
   }
 
   StageClicked(stage) {
-    if (this.state.currGame > 0 && this.state.currStep > 0) {
-      // pick
-      if (!this.IsStageBanned(stage.name) && !this.IsStageStriked(stage.name)) {
-        this.state.selectedStage = stage.name;
-        this.setState(this.state);
-        this.setState({ timestamp: new Date().getTime() });
+    fetch(
+      "http://" + window.location.hostname + ":5000/stage_strike_stage_clicked",
+      {
+        method: "POST",
+        body: JSON.stringify(stage),
+        contentType: "application/json",
       }
-    } else if (
-      !this.IsStageStriked(stage.name, true) &&
-      !this.IsStageBanned(stage.name)
-    ) {
-      // ban
-      let foundIndex = this.state.strikedStages[this.state.currStep].findIndex(
-        (e) => e === stage.name
-      );
-      if (foundIndex === -1) {
-        if (
-          this.state.strikedStages[this.state.currStep].length <
-          this.GetStrikeNumber()
-        ) {
-          this.state.strikedStages[this.state.currStep].push(stage.name);
-          this.state.strikedBy[this.state.currPlayer].push(stage.codename);
-        }
-      } else {
-        this.state.strikedStages[this.state.currStep].splice(foundIndex, 1);
+    );
+  }
 
-        foundIndex = this.state.strikedBy[this.state.currPlayer].findIndex(
-          (e) => e === stage.codename
-        );
-        this.state.strikedBy[this.state.currPlayer].splice(foundIndex, 1);
-      }
-      this.setState(this.state);
-      this.setState({ timestamp: new Date().getTime() });
-    }
+  Undo() {
+    fetch("http://" + window.location.hostname + ":5000/stage_strike_undo", {
+      method: "POST",
+      contentType: "application/json",
+    });
+  }
+
+  Redo() {
+    fetch("http://" + window.location.hostname + ":5000/stage_strike_redo", {
+      method: "POST",
+      contentType: "application/json",
+    });
   }
 
   CanConfirm() {
@@ -181,7 +169,8 @@ class App extends Component {
       if (this.state.currGame === 0) {
         if (
           this.state.strikedStages[this.state.currStep].length ===
-          this.state.ruleset.strikeOrder[this.state.currStep]
+            this.state.ruleset.strikeOrder[this.state.currStep] &&
+          !this.state.selectedStage
         ) {
           return true;
         }
@@ -199,64 +188,41 @@ class App extends Component {
   }
 
   ConfirmClicked() {
-    if (this.state.currGame === 0) {
-      if (
-        this.state.strikedStages[this.state.currStep].length ===
-        this.state.ruleset.strikeOrder[this.state.currStep]
-      ) {
-        this.state.currStep += 1;
-        this.state.currPlayer = (this.state.currPlayer + 1) % 2;
-        this.state.strikedStages.push([]);
+    fetch(
+      "http://" +
+        window.location.hostname +
+        ":5000/stage_strike_confirm_clicked",
+      {
+        method: "POST",
+        contentType: "application/json",
       }
-    } else {
-      if (
-        this.state.strikedStages[this.state.currStep].length ===
-        this.state.ruleset.banCount
-      ) {
-        this.state.currStep += 1;
-        this.state.currPlayer = (this.state.currPlayer + 1) % 2;
-        this.state.strikedStages.push([]);
-      }
-    }
-
-    if (
-      this.state.currGame === 0 &&
-      this.state.currStep >= this.state.ruleset.strikeOrder.length
-    ) {
-      let selectedStage = this.state.ruleset.neutralStages.find(
-        (stage) => !this.IsStageStriked(stage.name)
-      );
-      this.state.selectedStage = selectedStage.name;
-      this.state.stagesPicked.push(selectedStage.name);
-    }
-
-    this.setState(this.state);
-    this.setState({ timestamp: new Date().getTime() });
-    console.log(this.state);
+    );
   }
 
   MatchWinner(id) {
-    this.state.currGame += 1;
-    this.state.currStep = 0;
+    fetch(
+      "http://" + window.location.hostname + ":5000/stage_strike_match_win",
+      {
+        method: "POST",
+        contentType: "application/json",
+        body: JSON.stringify({
+          winner: id,
+        }),
+      }
+    );
+  }
 
-    this.state.stagesWon[id].push(this.state.selectedStage);
-    this.state.stagesPicked.push(this.state.selectedStage);
-
-    this.state.currPlayer = id;
-    this.state.strikedStages = [[]];
-    this.state.selectedStage = null;
-    this.state.strikedBy = [[], []];
-
-    this.state.lastWinner = id;
-
-    // If next step has no bans, skip it
-    if (this.GetStrikeNumber() == 0) {
-      this.ConfirmClicked();
-    }
-
-    this.setState(this.state);
-    this.UpdateStreamScore();
-    this.setState({ timestamp: new Date().getTime() });
+  SetGentlemans(value) {
+    fetch(
+      "http://" +
+        window.location.hostname +
+        ":5000/stage_strike_set_gentlemans",
+      {
+        method: "POST",
+        contentType: "application/json",
+        body: JSON.stringify({ value: value }),
+      }
+    );
   }
 
   GetStrikeNumber() {
@@ -283,7 +249,6 @@ class App extends Component {
 
   componentDidMount() {
     window.setInterval(() => this.FetchRuleset(), 100);
-    window.setInterval(() => this.UpdateStream(), 100);
   }
 
   FetchRuleset() {
@@ -293,24 +258,17 @@ class App extends Component {
         let oldRuleset = this.state.ruleset;
 
         this.setState({
-          playerNames: [data.p1 ? data.p1 : "P1", data.p2 ? data.p2 : "P2"],
+          playerNames: [
+            data.p1 ? data.p1 : i18n.t("p1"),
+            data.p2 ? data.p2 : i18n.t("p2"),
+          ],
           ruleset: data.ruleset,
           phase: data.phase,
           match: data.match,
           bestOf: data.best_of,
         });
 
-        // Reset only if ruleset changed
-        if (JSON.stringify(oldRuleset) !== JSON.stringify(this.state.ruleset)) {
-          this.Initialize();
-        }
-
-        if (
-          data.state &&
-          Object.keys(data.state).length > 0 &&
-          (this.state.timestamp == 0 ||
-            this.state.timestamp < data.state.timestamp)
-        ) {
+        if (data.state && Object.keys(data.state).length > 0) {
           this.setState({
             currGame: data.state.currGame,
             currPlayer: data.state.currPlayer,
@@ -321,80 +279,13 @@ class App extends Component {
             stagesPicked: data.state.stagesPicked,
             selectedStage: data.state.selectedStage,
             lastWinner: data.state.lastWinner,
-            serverTimestamp: data.state.timestamp,
-            timestamp: data.state.timestamp,
+            gentlemans: data.state.gentlemans,
+            canUndo: data.state.canUndo,
+            canRedo: data.state.canRedo,
           });
         }
       })
       .catch(console.log);
-  }
-
-  UpdateStream() {
-    if (!this.state.ruleset) return;
-
-    if (this.state.timestamp <= this.state.serverTimestamp) return;
-
-    let allStages =
-      this.state.currGame === 0
-        ? this.state.ruleset.neutralStages
-        : this.state.ruleset.neutralStages.concat(
-            this.state.ruleset.counterpickStages
-          );
-    let stageMap = {};
-
-    allStages.forEach((stage) => {
-      stageMap[stage.codename] = stage;
-    });
-
-    let data = {
-      dsr: this.GetBannedStages().map((stage) => this.GetStage(stage).codename),
-      playerTurn: null,
-      selected: this.GetStage(this.state.selectedStage),
-      stages: stageMap,
-      striked: this.state.ruleset.neutralStages
-        .concat(this.state.ruleset.counterpickStages)
-        .filter((stage) => this.IsStageStriked(stage.name))
-        .map((stage) => stage.codename),
-      strikedBy: this.state.strikedBy,
-      currPlayer: this.state.currPlayer,
-      state: {
-        currGame: this.state.currGame,
-        currPlayer: this.state.currPlayer,
-        currStep: this.state.currStep,
-        strikedStages: this.state.strikedStages,
-        strikedBy: this.state.strikedBy,
-        stagesWon: this.state.stagesWon,
-        stagesPicked: this.state.stagesPicked,
-        selectedStage: this.state.selectedStage,
-        lastWinner: this.state.lastWinner,
-        timestamp: this.state.timestamp,
-      },
-    };
-
-    fetch("http://" + window.location.hostname + ":5000/post", {
-      method: "POST",
-      body: JSON.stringify(data),
-      contentType: "application/json",
-    });
-  }
-
-  UpdateStreamScore() {
-    let data = {
-      team1score: this.state.stagesWon[0].length,
-      team2score: this.state.stagesWon[1].length,
-    };
-
-    fetch("http://" + window.location.hostname + ":5000/score", {
-      method: "POST",
-      body: JSON.stringify(data),
-      contentType: "application/json",
-    });
-  }
-
-  ResetStreamScore() {
-    fetch("http://" + window.location.hostname + ":5000/reset-scores", {
-      method: "GET",
-    });
   }
 
   render() {
@@ -428,12 +319,10 @@ class App extends Component {
                     >
                       {this.state.phase ? this.state.phase + " / " : ""}
                       {this.state.match ? this.state.match + " / " : ""}
-                      {i18n.t("game")} {this.state.currGame + 1}
+                      {i18n.t("game", { value: this.state.currGame + 1 })}
                       {this.state.bestOf
                         ? " (" +
-                          i18n.t("best_of") +
-                          " " +
-                          this.state.bestOf +
+                          i18n.t("best_of", { value: this.state.bestOf }) +
                           ")"
                         : ""}
                     </Typography>
@@ -460,34 +349,70 @@ class App extends Component {
                       >
                         {this.state.selectedStage ? (
                           <>{i18n.t("report_results")}</>
-                        ) : this.state.currGame > 0 &&
-                          this.state.currStep > 0 ? (
-                          <>
-                            <span
-                              style={{
-                                color:
-                                  darkTheme.palette[
-                                    `p${this.state.currPlayer + 1}color`
-                                  ].main,
-                              }}
-                            >
-                              {this.state.playerNames[this.state.currPlayer]}
-                            </span>
-                            , {i18n.t("pick_a_stage")}
-                          </>
                         ) : (
                           <>
-                            <span
-                              style={{
-                                color:
-                                  darkTheme.palette[
-                                    `p${this.state.currPlayer + 1}color`
-                                  ].main,
-                              }}
-                            >
-                              {this.state.playerNames[this.state.currPlayer]}
-                            </span>
-                            , {i18n.t("ban")} {this.GetStrikeNumber()} stage(s)
+                            {this.state.gentlemans ? (
+                              <>
+                                {i18n.t("gentlemans_prompt", {
+                                  gentlemans_pick: i18n.t("gentlemans_pick"),
+                                })}
+                              </>
+                            ) : this.state.currGame > 0 &&
+                              this.state.currStep > 0 ? (
+                              <div
+                                dangerouslySetInnerHTML={{
+                                  __html: i18n.t("select_a_stage_prompt", {
+                                    player: ReactDOMServer.renderToStaticMarkup(
+                                      <span
+                                        style={{
+                                          color:
+                                            darkTheme.palette[
+                                              `p${
+                                                this.state.currPlayer + 1
+                                              }color`
+                                            ].main,
+                                        }}
+                                      >
+                                        {
+                                          this.state.playerNames[
+                                            this.state.currPlayer
+                                          ]
+                                        }
+                                      </span>
+                                    ),
+                                    val: this.GetStrikeNumber(),
+                                    interpolation: { escapeValue: false },
+                                  }),
+                                }}
+                              ></div>
+                            ) : (
+                              <div
+                                dangerouslySetInnerHTML={{
+                                  __html: i18n.t("ban_prompt", {
+                                    player: ReactDOMServer.renderToStaticMarkup(
+                                      <span
+                                        style={{
+                                          color:
+                                            darkTheme.palette[
+                                              `p${
+                                                this.state.currPlayer + 1
+                                              }color`
+                                            ].main,
+                                        }}
+                                      >
+                                        {
+                                          this.state.playerNames[
+                                            this.state.currPlayer
+                                          ]
+                                        }
+                                      </span>
+                                    ),
+                                    val: this.GetStrikeNumber(),
+                                    interpolation: { escapeValue: false },
+                                  }),
+                                }}
+                              ></div>
+                            )}
                           </>
                         )}
                       </Typography>
@@ -500,12 +425,7 @@ class App extends Component {
                   textAlign={"center"}
                   spacing={1}
                   justifyItems="center"
-                  alignContent={"center"}
-                  alignItems="center"
-                  sx={{
-                    overflow: { xs: "scroll", lg: "hidden" },
-                    "flex-wrap": { xs: "nowrap", lg: "wrap" },
-                  }}
+                  style={{ overflow: "auto", height: "100%" }}
                 >
                   <Grid
                     item
@@ -514,85 +434,141 @@ class App extends Component {
                     spacing={2}
                     justifyContent="center"
                     alignContent={"center"}
-                    style={{ height: "100%" }}
                   >
-                    <>
-                      {(this.state.currGame > 0
-                        ? this.state.ruleset.neutralStages.concat(
-                            this.state.ruleset.counterpickStages
-                          )
-                        : this.state.ruleset.neutralStages
-                      ).map((stage) => (
-                        <Grid item xs={4} sm={3} md={2}>
-                          <Card>
-                            <CardActionArea
-                              onClick={() => this.StageClicked(stage)}
+                    {(this.state.currGame > 0
+                      ? this.state.ruleset.neutralStages.concat(
+                          this.state.ruleset.counterpickStages
+                        )
+                      : this.state.ruleset.neutralStages
+                    ).map((stage) => (
+                      <Grid item xs={4} sm={3} md={2}>
+                        <Card
+                          style={{
+                            borderStyle: "solid",
+                            borderWidth: 3,
+                            borderRadius: 8,
+                            borderColor:
+                            this.state.selectedStage === stage.codename
+                            ? "#4caf50ff"
+                            : (this.IsStageStriked(stage.codename) ||
+                              this.IsStageBanned(stage.codename))
+                                ? "#f44336ff"
+                                : "lightgray",
+                            boxShadow:
+                            this.state.selectedStage === stage.codename
+                            ? "0 0 10px #4caf50ff"
+                            : (this.IsStageStriked(stage.codename) ||
+                              this.IsStageBanned(stage.codename))
+                                ? "0 0 10px #f44336ff"
+                                : "0 0 0px #ffffff00",
+                            transitionProperty: "border-color box-shadow",
+                            transitionDuration: "500ms",
+                          }}
+                        >
+                          <CardActionArea
+                            onClick={() => this.StageClicked(stage)}
+                          >
+                            {this.IsStageStriked(stage.codename) ? (
+                              <>
+                                <div className="stamp stage-striked"></div>
+                                <div className="banned_by">
+                                  <Typography
+                                    variant="button"
+                                    component="div"
+                                    fontWeight={"bold"}
+                                    noWrap
+                                    fontSize={{ xs: 16, md: "" }}
+                                  >
+                                    {this.state.strikedBy[0].findIndex(
+                                      (s) => s == stage.codename
+                                    ) != -1
+                                      ? this.state.playerNames[0]
+                                      : this.state.playerNames[1]}
+                                  </Typography>
+                                </div>
+                              </>
+                            ) : null}
+                            {this.IsStageBanned(stage.codename) ? (
+                              <div className="stamp stage-dsr"></div>
+                            ) : null}
+                            {this.state.selectedStage === stage.codename ? (
+                              <>
+                                {this.state.gentlemans ? (
+                                  <>
+                                    <div className="stamp stage-gentlemans"></div>
+                                    <div className="banned_by">
+                                      <Typography
+                                        variant="button"
+                                        component="div"
+                                        fontWeight={"bold"}
+                                        noWrap
+                                        fontSize={{ xs: 16, md: "" }}
+                                      >
+                                        {i18n.t("gentlemans")}
+                                      </Typography>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="stamp stage-selected"></div>
+                                    <div className="banned_by">
+                                      <Typography
+                                        variant="button"
+                                        component="div"
+                                        fontWeight={"bold"}
+                                        noWrap
+                                        fontSize={{ xs: 16, md: "" }}
+                                      >
+                                        {
+                                          this.state.playerNames[
+                                            this.state.currPlayer
+                                          ]
+                                        }
+                                      </Typography>
+                                    </div>
+                                  </>
+                                )}
+                              </>
+                            ) : null}
+                            <CardMedia
+                              component="img"
+                              style={{ aspectRatio: "3 / 2" }}
+                              image={`http://${window.location.hostname}:5000/${stage.path}`}
+                            />
+                            <Box
+                              sx={{
+                                padding: { xs: "4px", sm: "6px", lg: "8px" },
+                              }}
                             >
-                              {this.IsStageStriked(stage.name) ? (
-                                <>
-                                  <div className="stamp stage-striked"></div>
-                                  <div className="banned_by">
-                                    <Typography
-                                      variant="button"
-                                      component="div"
-                                      fontWeight={"bold"}
-                                      noWrap
-                                      fontSize={{ xs: 8, md: "" }}
-                                    >
-                                      {this.state.strikedBy[0].findIndex(
-                                        (s) => s == stage.codename
-                                      ) != -1
-                                        ? this.state.playerNames[0]
-                                        : this.state.playerNames[1]}
-                                    </Typography>
-                                  </div>
-                                </>
-                              ) : null}
-                              {this.IsStageBanned(stage.name) ? (
-                                <div className="stamp stage-dsr"></div>
-                              ) : null}
-                              {this.state.selectedStage === stage.name ? (
-                                <>
-                                  <div className="stamp stage-selected"></div>
-                                  <div className="banned_by">
-                                    <Typography
-                                      variant="button"
-                                      component="div"
-                                      fontWeight={"bold"}
-                                      noWrap
-                                      fontSize={{ xs: 8, md: "" }}
-                                    >
-                                      {
-                                        this.state.playerNames[
-                                          this.state.currPlayer
-                                        ]
-                                      }
-                                    </Typography>
-                                  </div>
-                                </>
-                              ) : null}
-                              <CardMedia
-                                component="img"
-                                height={{ sm: "50", md: "100" }}
-                                image={`http://${window.location.hostname}:5000/${stage.path}`}
-                              />
-                              <CardContent
-                                style={{ padding: darkTheme.spacing(1) }}
+                              <Typography
+                                variant="button"
+                                component="div"
+                                noWrap
+                                fontSize={{ xs: 8, sm: 12, lg: "" }}
                               >
-                                <Typography
-                                  variant="button"
-                                  component="div"
-                                  noWrap
-                                  fontSize={{ xs: 8, md: "" }}
-                                >
-                                  {stage.name}
-                                </Typography>
-                              </CardContent>
-                            </CardActionArea>
-                          </Card>
-                        </Grid>
-                      ))}
-                    </>
+                                {i18next.t("{{name}}", {
+                                  name: stage.locale
+                                    ? stage.locale.hasOwnProperty(
+                                        i18next.language
+                                      )
+                                      ? stage.locale[
+                                          i18next.language.replace("-", "_")
+                                        ]
+                                      : stage.locale.hasOwnProperty(
+                                          i18next.language.split("-")[0]
+                                        )
+                                      ? stage.locale[
+                                          i18next.language.split("-")[0]
+                                        ]
+                                      : stage.en_name
+                                    : stage.en_name,
+                                })}
+                              </Typography>
+                            </Box>
+                          </CardActionArea>
+                        </Card>
+                      </Grid>
+                    ))}
                   </Grid>
                 </Grid>
                 <Grid
@@ -601,46 +577,92 @@ class App extends Component {
                   textAlign={"center"}
                   spacing={1}
                   justifyItems="center"
-                  style={{ flexGrow: 0 }}
+                  style={{ flexGrow: 0, zIndex: 9999 }}
                 >
-                  {this.state.selectedStage ? (
-                    <Grid
-                      container
-                      item
-                      xs={12}
-                      spacing={2}
-                      justifyContent="center"
-                    >
-                      <Grid item xs={4}>
-                        <Button
-                          size={
-                            darkTheme.breakpoints.up("md") ? "large" : "small"
-                          }
-                          fontSize={darkTheme.breakpoints.up("md") ? 8 : ""}
-                          fullWidth
-                          color="p1color"
-                          variant="contained"
-                          onClick={() => this.MatchWinner(0)}
-                        >
-                          {this.state.playerNames[0]} {i18n.t("won")}
-                        </Button>
-                      </Grid>
-                      <Grid item xs={4}>
-                        <Button
-                          size={
-                            darkTheme.breakpoints.up("md") ? "large" : "small"
-                          }
-                          fontSize={darkTheme.breakpoints.up("md") ? 8 : ""}
-                          fullWidth
-                          color="p2color"
-                          variant="contained"
-                          onClick={() => this.MatchWinner(1)}
-                        >
-                          {this.state.playerNames[1]} {i18n.t("won")}
-                        </Button>
-                      </Grid>
-                    </Grid>
-                  ) : null}
+                  <Box style={{ position: "relative", width: "100%" }}>
+                    {this.CanConfirm() && (
+                      <Fab
+                        size={
+                          darkTheme.breakpoints.up("md") ? "large" : "small"
+                        }
+                        color="success"
+                        variant="extended"
+                        onClick={() => this.ConfirmClicked()}
+                        style={{
+                          top: -16,
+                          left: "50%",
+                          transform: "translateX(-50%) translateY(-100%)",
+                          position: "absolute",
+                        }}
+                        sx={{
+                          minWidth: {
+                            xs: "100%",
+                            md: "33%",
+                          },
+                        }}
+                      >
+                        <Check sx={{ mr: 1 }} />
+                        {i18n.t("confirm")}
+                      </Fab>
+                    )}
+                    {this.state.selectedStage && (
+                      <Fab
+                        size={
+                          darkTheme.breakpoints.up("md") ? "large" : "small"
+                        }
+                        fontSize={darkTheme.breakpoints.up("md") ? 8 : ""}
+                        fullWidth
+                        color="p1color"
+                        variant="extended"
+                        onClick={() => this.MatchWinner(0)}
+                        style={{
+                          top: -16,
+                          left: 16,
+                          transform: "translateY(-100%)",
+                          position: "absolute",
+                        }}
+                        sx={{
+                          width: {
+                            xs: "45%",
+                            md: "33%",
+                          },
+                        }}
+                      >
+                        {i18n.t("player_won", {
+                          player: this.state.playerNames[0],
+                        })}
+                      </Fab>
+                    )}
+
+                    {this.state.selectedStage && (
+                      <Fab
+                        size={
+                          darkTheme.breakpoints.up("md") ? "large" : "small"
+                        }
+                        fontSize={darkTheme.breakpoints.up("md") ? 8 : ""}
+                        fullWidth
+                        color="p2color"
+                        variant="extended"
+                        onClick={() => this.MatchWinner(1)}
+                        style={{
+                          top: -16,
+                          right: 16,
+                          transform: "translateY(-100%)",
+                          position: "absolute",
+                        }}
+                        sx={{
+                          width: {
+                            xs: "45%",
+                            md: "33%",
+                          },
+                        }}
+                      >
+                        {i18n.t("player_won", {
+                          player: this.state.playerNames[1],
+                        })}
+                      </Fab>
+                    )}
+                  </Box>
                   <Grid
                     container
                     item
@@ -648,21 +670,71 @@ class App extends Component {
                     spacing={2}
                     justifyContent="center"
                   >
-                    <Grid item xs={4}>
+                    <Grid item xs>
                       <Button
                         size={
                           darkTheme.breakpoints.up("md") ? "large" : "small"
                         }
                         fontSize={darkTheme.breakpoints.up("md") ? 8 : ""}
                         fullWidth
-                        color="success"
-                        variant={this.CanConfirm() ? "contained" : "outlined"}
-                        onClick={() => this.ConfirmClicked()}
+                        disabled={!this.state.canUndo}
+                        variant="outlined"
+                        sx={{
+                          flexDirection: { xs: "column", lg: "unset" },
+                          fontSize: { xs: 10, lg: "unset" },
+                        }}
+                        onClick={() => {
+                          this.Undo();
+                        }}
+                        startIcon={<Undo />}
                       >
-                        {i18n.t("confirm")}
+                        {i18n.t("undo")}
                       </Button>
                     </Grid>
-                    <Grid item xs={4}>
+                    <Grid item xs>
+                      <Button
+                        size={
+                          darkTheme.breakpoints.up("md") ? "large" : "small"
+                        }
+                        fontSize={darkTheme.breakpoints.up("md") ? 8 : ""}
+                        fullWidth
+                        disabled={!this.state.canRedo}
+                        variant="outlined"
+                        sx={{
+                          flexDirection: { xs: "column", lg: "unset" },
+                          fontSize: { xs: 10, lg: "unset" },
+                        }}
+                        onClick={() => {
+                          this.Redo();
+                        }}
+                        startIcon={<Redo />}
+                      >
+                        {i18n.t("redo")}
+                      </Button>
+                    </Grid>
+                    <Grid item xs>
+                      <Button
+                        sx={{
+                          flexDirection: { xs: "column", lg: "unset" },
+                          fontSize: { xs: 10, lg: "unset" },
+                        }}
+                        size={
+                          darkTheme.breakpoints.up("md") ? "large" : "small"
+                        }
+                        fontSize={darkTheme.breakpoints.up("md") ? 8 : ""}
+                        fullWidth
+                        variant={
+                          this.state.gentlemans ? "contained" : "outlined"
+                        }
+                        startIcon={<Handshake />}
+                        onClick={() => {
+                          this.SetGentlemans(!this.state.gentlemans);
+                        }}
+                      >
+                        {i18n.t("gentlemans_pick")}
+                      </Button>
+                    </Grid>
+                    <Grid item xs>
                       <Button
                         size={
                           darkTheme.breakpoints.up("md") ? "large" : "small"
@@ -670,12 +742,16 @@ class App extends Component {
                         fontSize={darkTheme.breakpoints.up("md") ? 8 : ""}
                         fullWidth
                         variant="outlined"
+                        sx={{
+                          flexDirection: { xs: "column", lg: "unset" },
+                          fontSize: { xs: 10, lg: "unset" },
+                        }}
                         onClick={() => {
                           this.Initialize(true);
-                          this.setState({ timestamp: new Date().getTime() });
                         }}
+                        startIcon={<RestartAlt />}
                       >
-                        {i18n.t("reset")}
+                        {i18n.t("restart_all")}
                       </Button>
                     </Grid>
                   </Grid>
@@ -723,13 +799,21 @@ class App extends Component {
                         color="p1color"
                         variant="contained"
                         onClick={() =>
-                          this.setState({
-                            currPlayer: 0,
-                            timestamp: new Date().getTime(),
-                          })
+                          fetch(
+                            "http://" +
+                              window.location.hostname +
+                              ":5000/stage_strike_rps_win",
+                            {
+                              method: "POST",
+                              contentType: "application/json",
+                              body: JSON.stringify({ winner: 0 }),
+                            }
+                          )
                         }
                       >
-                        {this.state.playerNames[0]} {i18n.t("won")}
+                        {i18n.t("player_won", {
+                          player: this.state.playerNames[0],
+                        })}
                       </Button>
                     </Grid>
                     <Grid item xs>
@@ -742,13 +826,21 @@ class App extends Component {
                         color="p2color"
                         variant="contained"
                         onClick={() =>
-                          this.setState({
-                            currPlayer: 1,
-                            timestamp: new Date().getTime(),
-                          })
+                          fetch(
+                            "http://" +
+                              window.location.hostname +
+                              ":5000/stage_strike_rps_win",
+                            {
+                              method: "POST",
+                              contentType: "application/json",
+                              body: JSON.stringify({ winner: 1 }),
+                            }
+                          )
                         }
                       >
-                        {this.state.playerNames[1]} {i18n.t("won")}
+                        {i18n.t("player_won", {
+                          player: this.state.playerNames[1],
+                        })}
                       </Button>
                     </Grid>
                   </Grid>
@@ -765,10 +857,18 @@ class App extends Component {
                     color="success"
                     variant="outlined"
                     onClick={() =>
-                      this.setState({
-                        currPlayer: Math.random() > 0.5 ? 1 : 0,
-                        timestamp: new Date().getTime(),
-                      })
+                      fetch(
+                        "http://" +
+                          window.location.hostname +
+                          ":5000/stage_strike_rps_win",
+                        {
+                          method: "POST",
+                          contentType: "application/json",
+                          body: JSON.stringify({
+                            winner: Math.random() > 0.5 ? 1 : 0,
+                          }),
+                        }
+                      )
                     }
                   >
                     {i18n.t("randomize")}

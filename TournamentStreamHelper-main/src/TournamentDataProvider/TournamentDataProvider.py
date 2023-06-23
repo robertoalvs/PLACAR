@@ -8,16 +8,22 @@ class TournamentDataProvider:
         self.videogame = None
         self.parent = parent
 
+    def GetIconURL(self):
+        pass
+
     def GetEntrants(self):
         pass
 
-    def GetTournamentData(self):
+    def GetTournamentData(self, progress_callback=None):
         pass
 
     def GetMatch(self, setId):
         pass
 
-    def GetMatches(self):
+    def GetMatches(self, getFinished=False, progress_callback=None):
+        pass
+
+    def GetStreamQueue(self, streamName, progress_callback=None):
         pass
 
     def GetStreamMatchId(self, streamName):
@@ -27,6 +33,18 @@ class TournamentDataProvider:
         pass
 
     def GetRecentSets(self, id1, id2, callback):
+        pass
+
+    def GetLastSets(self, playerId, playerNumber):
+        pass
+    
+    def GetPlayerHistoryStandings(self, playerId, playerNumber, gameType):
+        pass
+
+    def GetTournamentPhases(self, progress_callback=None):
+        pass
+
+    def GetTournamentPhaseGroup(self, id, progress_callback=None):
         pass
 
     def GetStandings(self, playerNumber):

@@ -1,5 +1,6 @@
 import os
 import json
+from .Helpers.TSHDictHelper import *
 
 
 class SettingsManager:
@@ -7,18 +8,22 @@ class SettingsManager:
 
     def SaveSettings():
         with open("./user_data/settings.json", 'w') as file:
-            json.dump(SettingsManager.settings, file, indent=4)
+            json.dump(SettingsManager.settings, file, indent=4, sort_keys=True)
 
     def LoadSettings():
         with open("./user_data/settings.json", 'r') as file:
             SettingsManager.settings = json.load(file)
 
     def Set(key: str, value):
-        SettingsManager.settings[key] = value
+        deep_set(SettingsManager.settings, key, value)
+        SettingsManager.SaveSettings()
+    
+    def Unset(key: str):
+        deep_unset(SettingsManager.settings, key)
         SettingsManager.SaveSettings()
 
     def Get(key: str, default=None):
-        return SettingsManager.settings.get(key, default)
+        return deep_get(SettingsManager.settings, key, default)
 
 
 if not os.path.isfile("./user_data/settings.json"):

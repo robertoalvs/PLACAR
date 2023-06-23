@@ -89,13 +89,13 @@ body {
 .container .name {
   color: var(--text-color);
   position: absolute;
-  left: 30px;
+  left: 28px;
   top: 2px;
-  width: 210px;
+  width: 222px;
   height: 34px;
-  font-size: 22px;
-  padding-left: 4px;
-  padding-right: 4px;
+  font-size: 26px;
+  padding-left: 2px;
+  padding-right: 2px;
   justify-content: left;
   text-transform: uppercase;
 }
@@ -120,10 +120,7 @@ body {
   top: 22px;
   width: 170px;
   height: 20px;
-  font-size: 14px;
-  padding-left: 4px;
-  padding-right: 4px;
-  display: flex;
+  font-size: 16px;
   justify-content: center;
   align-items: center;
 }
@@ -167,7 +164,7 @@ body {
   width: 38px;
   height: 26px;
   border: 2px solid white;
-  border-radius: 10px;
+  border-radius: 6px;
 }
 
 .flagcountry {
@@ -185,11 +182,11 @@ body {
 .score {
   position: absolute;
   width: 30px;
-  height: 34px;
+  height: 37px;
   display: flex;
   align-content: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: 30px;
   top: 1px;
   right: 18px;
   color: var(--p1-score-color);
@@ -197,10 +194,10 @@ body {
 
 .sponsor-container {
   position: absolute;
-  top: 2px;
-  height: 34px;
-  width: 34px;
-  left: 246px;
+  top: 3px;
+  height: 30px;
+  width: 30px;
+  left: 254px;
   overflow: hidden;
   display: flex;
 }
@@ -265,7 +262,7 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  width: 320px;
+  width: 300px;
   text-align: justify;
   align-items: center;
   overflow: hidden;
@@ -274,18 +271,18 @@ body {
 }
 
 .info.material_container.middle .tournament_name {
-  width: 100%;
+  max-width: 100%;
   font-size: 26px;
 }
 
 .info.material_container.middle .phase {
-  width: 100%;
+  max-width: 100%;
   font-size: 16px;
   letter-spacing: 4px;
 }
 
 .info.material_container.middle .match {
-  width: 100%;
+  max-width: 100%;
   font-size: 22px;
   letter-spacing: 3px;
   opacity: 1;
@@ -334,4 +331,25 @@ body {
 .t2 .doubles_score {
   color: var(--p2-score-color);
   background: var(--p2-score-bg-color);
+}
+
+.pronoun {
+  position: absolute;
+  box-sizing: border-box;
+  width: 90px;
+  top: -22px;
+  left: 258px;
+  font-size: 16px;
+  text-transform: uppercase;
+  padding-left: 2px;
+  padding-right: 4px;
+  border-radius: 4px;
+  color: var(--bg-color);
+}
+
+.t1 .pronoun {
+  background-color: var(--p1-sponsor-color);
+}
+.t2 .pronoun {
+  background-color: var(--p2-sponsor-color);
 }
