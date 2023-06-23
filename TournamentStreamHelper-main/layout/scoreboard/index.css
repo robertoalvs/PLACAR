@@ -368,8 +368,8 @@ body {
   top: 24px;
   left: 50%;
   transform: translateX(-50%);
-  width: 100px;
-  height: 100px;
+  width: 200px;
+  height: 200px;
   background-image: url("../scoreboard/rsa.png");
   background-size: contain;
   background-repeat: no-repeat;
