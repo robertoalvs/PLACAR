@@ -227,10 +227,10 @@ body {
   justify-content: right;
 }
 
-/*.sf6.online .seed {
+.sf6.online .seed {
   position: absolute;
   top: 106px;
-}*/
+}
 
 .sf6.online .p1 .seed {
   left: 0;
@@ -658,7 +658,7 @@ body {
 }
 
 .sf6 .score {
-  font-size: 34px;
+  font-size: 44px;
 }
 
 .p1 .score {
