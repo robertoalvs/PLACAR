@@ -89,12 +89,14 @@ body {
   width: 580px;
   top: 60px;
 }
-
+/* =================== placa tamanho play1 2 play2 ===========*/
 .sf6 .player.container {
   top: 10px;
   height: 58px;
   width: 450px;
 }
+
+/* ========================== ===========================*/
 
 .p1.container {
   background-position: 100% 0;
@@ -169,10 +171,10 @@ body {
   overflow: hidden;
 }
 
-.sf6 .chips {
+/*.sf6 .chips {
   top: 106px;
   height: 32px;
-}
+} */
 
 .sf6.offline .chips {
   width: 450px;
