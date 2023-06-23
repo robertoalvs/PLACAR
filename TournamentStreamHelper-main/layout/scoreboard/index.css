@@ -461,13 +461,13 @@ body {
   height: 48px;
 }
 
-.sf6 .info.container.top {
+/*.sf6 .info.container.top {
   width: 440px;
   top: 0;
   border-top-right-radius: 0;
   border-top-left-radius: 0;
   height: 30px;
-}
+} */
 
 .info.container.bottom {
   top: 42px;
@@ -512,7 +512,7 @@ body {
   transform: translateX(-50%);
 }
 
-/*.sf6 .info.container.bottom {
+.sf6 .info.container.bottom {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
   top: unset;
@@ -520,7 +520,7 @@ body {
   width: 400px;
   height: 64px;
   padding: 0px 20px;
-}*/
+}
 
 .bblue .info.container.bottom {
   top: 180px;
