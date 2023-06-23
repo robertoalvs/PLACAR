@@ -381,8 +381,9 @@ body {
 
 .fgc .logo {
   top: 145px;
-  width: 120px;
-  height: 120px;
+  width: 140px;
+  height: 10px;
+  opacity: 1;
 }
 
 .fgc.thin .logo {
