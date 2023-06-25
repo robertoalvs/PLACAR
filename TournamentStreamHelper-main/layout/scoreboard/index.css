@@ -692,6 +692,8 @@ body {
   background: var(--p2-score-bg-color);
   margin-left: -6px;
   margin-right: 6px;
+  width: 90px;
+  height: 90px;
 }
 
 .thin .p2 .score {
