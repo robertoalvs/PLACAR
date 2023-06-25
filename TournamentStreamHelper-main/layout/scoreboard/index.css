@@ -694,6 +694,7 @@ body {
   margin-right: 6px;
   width: 90px;
   height: 110px;
+  border: solid 2px orange;
 }
 
 .thin .p2 .score {
