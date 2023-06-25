@@ -666,13 +666,17 @@ body {
 }
 /* ======================= ================== */
 
-
+/* ===================== placar numeração P1 =====================*/
 .p1 .score {
   color: var(--p1-score-color);
   background: var(--p1-score-bg-color);
   margin-right: -6px;
   margin-left: 6px;
+  width: 90px;
+  height: 110px;
+  border: solid 4px orange;
 }
+/* ===================== =====================*/
 
 .thin .p1 .score {
   margin-right: -2px;
@@ -687,6 +691,7 @@ body {
   color: var(--p1-sponsor-color);
 }
 
+/* ===================== placar numeração P2 =====================*/
 .p2 .score {
   color: var(--p2-score-color);
   background: var(--p2-score-bg-color);
@@ -694,8 +699,9 @@ body {
   margin-right: 6px;
   width: 90px;
   height: 110px;
-  border: solid 2px orange;
+  border: solid 4px orange;
 }
+/* ===================== =====================*/
 
 .thin .p2 .score {
   margin-left: -2px;
