@@ -676,8 +676,7 @@ body {
   background: var(--p1-score-bg-color);
   margin-right: -6px;
   margin-left: 6px;
-  width: 80px;
-  height: 105px;
+  
   border: solid 4px orange;
 }
 /* ===================== =====================*/
@@ -701,8 +700,7 @@ body {
   background: var(--p2-score-bg-color);
   margin-left: -6px;
   margin-right: 6px;
-  width: 90px;
-  height: 110px;
+  
   border: solid 4px orange;
 }
 /* ===================== =====================*/
