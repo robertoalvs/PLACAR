@@ -467,11 +467,11 @@ body {
 .sf6 .info.container.top {
   width: 260px;
   top: 3;
-  margin-top: 5px;
+  margin-top: 3px;
   border-radius: 10px;
   /*border-top-right-radius: 0;
   border-top-left-radius: 0; */
-  font-size: 25px;
+  font-size: 3em;
   height: 50px;
 }
 
