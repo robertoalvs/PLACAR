@@ -467,10 +467,10 @@ body {
 .sf6 .info.container.top {
   width: 280px;
   top: 3;
-  margin-top: 5px;
+  margin-top: 10px;
   border-top-right-radius: 0;
   border-top-left-radius: 0;
-  height: 30px;
+  height: 50px;
 }
 
 .info.container.bottom {
