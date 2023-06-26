@@ -430,7 +430,8 @@ body {
 }
 
 .info.container.top {
-  bottom: 1px;
+  /*bottom: 8px;*/
+  top: 8px;
   left: 50%;
   transform: translateX(-50%);
   width: 360px;
