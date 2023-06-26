@@ -451,7 +451,7 @@ body {
   top: 8px;
   height: 34px;
   width: 300px;
-  font-size: 18px;
+  font-size: 30px;
   padding: 8px 16px;
 }
 
@@ -471,7 +471,6 @@ body {
   border-radius: 10px;
   /*border-top-right-radius: 0;
   border-top-left-radius: 0; */
-  font-size: 3em;
   height: 50px;
 }
 
