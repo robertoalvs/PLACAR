@@ -55,7 +55,7 @@ body {
   box-sizing: border-box;
   border-radius: var(--border-radius);
   /*background: var(--bg-color);*/
-  background-image: url("../scoreboard/green.png") top left repeat;
+  background-image: url("../scoreboard/3d-green.jpg") top left repeat;
   align-items: center;
   border: solid 2px orange;
 }
