@@ -398,14 +398,15 @@ body {
 .fgc.thin.bblue .logo {
   top: 970px;
 }
-/* =================== LOGO RSA =============== */
+/* =================== LOGO RSA =============== 
 .sf6 .logo {
   width: 180px;
   height: 180px;
   opacity: 0.7;
   top: 924px;
+
 }
-/* =================== LOGO RSA =============== */
+=================== LOGO RSA =============== */
 
 .info.container {
   left: 50%;
