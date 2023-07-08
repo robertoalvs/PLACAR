@@ -56,6 +56,7 @@ body {
   border-radius: var(--border-radius);
   /*background: var(--bg-color);*/
   background-image: url(../scoreboard/408151.jpg);
+  background-size: cover;
   align-items: center;
   border: solid 2px orange;
 }
