@@ -50,6 +50,7 @@ body {
 .container {
   position: absolute;
   color: var(--text-color);
+  text-shadow: 2px 2px 2px black;
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
