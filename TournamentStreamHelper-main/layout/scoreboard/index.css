@@ -50,16 +50,12 @@ body {
 .container {
   position: absolute;
   color: var(--text-color);
-  text-shadow: 3px 3px 3px black;
-  text-transform: uppercase;
-  font-size: large;
-  box-shadow: 2px 2px 2px black;
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
   border-radius: var(--border-radius);
   /*background: var(--bg-color);*/
-  background: transparent;
+  background-image: url(../scoreboard/green2.png);
   align-items: center;
   border: solid 2px orange;
 }
