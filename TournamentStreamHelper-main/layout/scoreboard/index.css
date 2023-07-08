@@ -51,6 +51,7 @@ body {
   position: absolute;
   color: var(--text-color);
   text-shadow: 3px 3px 3px black;
+  text-transform: uppercase;
   box-shadow: 2px 2px 2px black;
   overflow: hidden;
   display: flex;
