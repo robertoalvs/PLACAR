@@ -46,7 +46,7 @@ body {
   width: 1920px;
   height: 1080px;
 }
-
+/* ============================ Geral ======================= */
 .container {
   position: absolute;
   color: var(--text-color);
@@ -95,7 +95,7 @@ body {
 /* =================== placa tamanho play1 2 play2 ===========*/
 .sf6 .player.container {
   top: 8px;
-  height: 58px;
+  height: 55px;
   width: 470px;
 }
 
@@ -666,7 +666,7 @@ body {
 }
 
 
-/* =================== placar valor ============== */
+/* =================== placar valor número ============== */
 .sf6 .score {
   font-size: 44px;
 }
