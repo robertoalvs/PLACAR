@@ -58,6 +58,7 @@ body {
   /*background: var(--bg-color);*/
   /* background-image: url(../scoreboard/green2.png);*/
   background-image: url(../scoreboard/white-golden.jpg);
+  background-position: center;
   background-size: cover;
   align-items: center;
   border: solid 2px orange;
