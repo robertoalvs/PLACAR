@@ -52,6 +52,7 @@ body {
   /*color: var(--text-color);*/
   color: rgba(255, 68, 0, 0.81);
   text-shadow: 1px 1px 1px black;
+  text-transform: uppercase;
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
