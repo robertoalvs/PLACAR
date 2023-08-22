@@ -51,6 +51,8 @@ body {
   position: absolute;
   /*color: var(--text-color);*/
   color: rgba(255, 68, 0, 0.81);
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: bold;
   text-shadow: 1px 1px 1px black;
   text-transform: uppercase;
   overflow: hidden;
