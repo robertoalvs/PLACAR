@@ -712,13 +712,12 @@ body {
 
 /* ===================== placar numeração P2 =====================*/
 .p2 .score {
-
+  
   /*color: var(--p2-score-color);
   background: var(--p2-score-bg-color); */
-
+  
   color: rgb(249, 173, 32);
   background-color: black;
-  
   margin-left: -6px;
   margin-right: 6px;
   border: solid 4px orange;
