@@ -50,11 +50,15 @@ body {
 .container {
   position: absolute;
   /*color: var(--text-color);*/
+
+  /*  apagar  */
   color: rgba(255, 68, 0, 0.81);
   font-family: Arial, Helvetica, sans-serif;
   font-weight: bold;
   text-shadow: 1px 1px 1px black;
   text-transform: uppercase;
+/*   apagar   */
+
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
@@ -679,10 +683,14 @@ body {
 
 /* ===================== placar numeração P1 =====================*/
 .p1 .score {
+
   /*color: var(--p1-score-color);
   background: var(--p1-score-bg-color); */
+
   color: rgb(249, 173, 32);
   background-color: black;
+
+
   margin-right: -6px;
   margin-left: 6px;
   border: solid 4px orange;
@@ -704,10 +712,13 @@ body {
 
 /* ===================== placar numeração P2 =====================*/
 .p2 .score {
+
   /*color: var(--p2-score-color);
   background: var(--p2-score-bg-color); */
+
   color: rgb(249, 173, 32);
   background-color: black;
+  
   margin-left: -6px;
   margin-right: 6px;
   border: solid 4px orange;
