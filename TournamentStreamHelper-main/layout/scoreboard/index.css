@@ -51,7 +51,7 @@ body {
   position: absolute;
   /*color: var(--text-color);*/
   color: rgba(255, 68, 0, 0.81);
-  text-shadow: 2px 2px 2px black;
+  text-shadow: 1px 1px 1px black;
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
