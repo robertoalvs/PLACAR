@@ -13,6 +13,8 @@
   src: url("../include/Roboto-Regular.ttf") format("truetype");
 }
 
+@import url('https://fonts.googleapis.com/css2?family=Coiny&display=swap');
+
 body {
   font-family: var(--font);
   font-weight: bold;
@@ -59,15 +61,17 @@ body {
   text-transform: uppercase;
 /*   apagar   */
 
+
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
-  border-radius: var(--border-radius);
+  border-radius: 10px;
   /*background: var(--bg-color);*/
   background-image: url(../scoreboard/logo-capcom01.jpg);
   background-size: cover;
   align-items: center;
-  border: solid 2px orange;
+  border: solid 1px orange;
+  border-radius: 10px;  
 }
 
 .player.container {
@@ -693,7 +697,7 @@ body {
 
   margin-right: -6px;
   margin-left: 6px;
-  border: solid 4px orange;
+  border: solid 1px orange;
 }
 /* ===================== =====================*/
 
@@ -720,7 +724,7 @@ body {
   background-color: black;
   margin-left: -6px;
   margin-right: 6px;
-  border: solid 4px orange;
+  border: solid 1px orange;
 }
 /* ===================== =====================*/
 
