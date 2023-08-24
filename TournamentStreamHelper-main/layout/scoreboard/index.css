@@ -25,6 +25,8 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Coiny&display=swap');
 
+
+
 body {
   font-family: var(--font);
   font-weight: bold;
@@ -60,8 +62,10 @@ body {
 }
 
 
-/* ============================ Geral ======================= */
+/* ====== Geral STREET FIGHTER 6 ===== */
+
 .container {
+
   position: absolute;
   /*color: var(--text-color);*/
   font-family: "flat";
