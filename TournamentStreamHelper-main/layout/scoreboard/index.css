@@ -14,8 +14,13 @@
 }
 
 @font-face {
-  font-family: "eliana";
-  src: url("../scoreboard/anja_eliane/PEPSI_pl.ttf") format("truetype");
+  font-family: "viny";
+  src: url("../scoreboard/anja_eliane/VinylCuts.ttf") format("truetype");
+}
+
+@font-face {
+  font-family: "flat";
+  src: url("../scoreboard/anja_eliane/flatwheat/Flatwheat-Regular.ttf") format("truetype");
 }
 
 @import url('https://fonts.googleapis.com/css2?family=Coiny&display=swap');
@@ -59,8 +64,7 @@ body {
 .container {
   position: absolute;
   /*color: var(--text-color);*/
-  font-family: "eliana";
-
+  font-family: "flat";
   /*  apagar  */
   color: black;
   
@@ -491,6 +495,7 @@ body {
   margin-top: 3px;
   border-radius: 10px;
   font-size: 1.3em;
+  background-color: black;
   /*border-top-right-radius: 0;
   border-top-left-radius: 0; */
   height: 45px;
@@ -701,13 +706,13 @@ body {
   background-color: black;
   margin-right: -6px;
   margin-left: 6px;
-  border: solid 2px orange;
+  border: solid 2px orange;  
 }
 
 .p1 .sponsor {
   color: var(--p1-sponsor-color);
   font-size: 1.1em;
-  
+  padding: 7px;
 }
 
 
@@ -727,8 +732,10 @@ body {
 }
 
 .p2 .sponsor {
-  color: var(--p2-sponsor-color);
+  /* color: var(--p2-sponsor-color); */
+  color: rgb(64, 149, 228);
   font-size: 1.1em;
+  padding: 7px;
 }
 
 /* ===================== =====================*/
