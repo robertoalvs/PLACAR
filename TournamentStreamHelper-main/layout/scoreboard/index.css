@@ -13,6 +13,11 @@
   src: url("../include/Roboto-Regular.ttf") format("truetype");
 }
 
+@font-face {
+  font-family: "eliana";
+  src: url("../scoreboard/anja_eliane/PEPSI_pl.ttf") format("truetype");
+}
+
 @import url('https://fonts.googleapis.com/css2?family=Coiny&display=swap');
 
 body {
@@ -48,19 +53,19 @@ body {
   width: 1920px;
   height: 1080px;
 }
+
+
 /* ============================ Geral ======================= */
 .container {
   position: absolute;
   /*color: var(--text-color);*/
+  font-family: "eliana";
 
   /*  apagar  */
-  color: rgba(255, 68, 0, 0.81);
-  font-family: Arial, Helvetica, sans-serif;
-  font-weight: bold;
-  text-shadow: 1px 1px 1px black;
+  color: black;
+  
   text-transform: uppercase;
 /*   apagar   */
-
 
   overflow: hidden;
   display: flex;
@@ -70,9 +75,9 @@ body {
   background-image: url(../scoreboard/logo-capcom01.jpg);
   background-size: cover;
   align-items: center;
-  border: solid 1px orange;
-  border-radius: 10px;  
+  border: solid 2px orange; 
 }
+/* =======================================================================*/
 
 .player.container {
   width: 500px;
@@ -110,6 +115,7 @@ body {
   top: 8px;
   height: 55px;
   width: 470px;
+  
 }
 
 /* ========================== ===========================*/
@@ -480,13 +486,14 @@ body {
 }
 /* =================== div meio do placar ========== */
 .sf6 .info.container.top {
-  width: 260px;
+  width: 240px;
   top: 3;
   margin-top: 3px;
   border-radius: 10px;
+  font-size: 1.3em;
   /*border-top-right-radius: 0;
   border-top-left-radius: 0; */
-  height: 50px;
+  height: 45px;
   /* =================== div meio do placar ========== */
 }
 
@@ -607,8 +614,8 @@ body {
   background-size: cover;
   background-repeat: no-repeat;
   background-position: center;
-  width: 39px;
-  height: 29px;
+  width: 41px;
+  height: 31px;
   border-radius: 4px;
 }
 
@@ -681,25 +688,51 @@ body {
 
 /* =================== placar valor número ============== */
 .sf6 .score {
-  font-size: 44px;
+  font-size: 40px;
 }
 /* ======================= ================== */
 
 /* ===================== placar numeração P1 =====================*/
 .p1 .score {
 
-  /*color: var(--p1-score-color);
-  background: var(--p1-score-bg-color); */
-
+  /* color: var(--p1-score-color); */
+  /* background: var(--p1-score-bg-color); */
   color: rgb(249, 173, 32);
   background-color: black;
-
-
   margin-right: -6px;
   margin-left: 6px;
-  border: solid 1px orange;
+  border: solid 2px orange;
 }
+
+.p1 .sponsor {
+  color: var(--p1-sponsor-color);
+  font-size: 1.1em;
+  
+}
+
+
 /* ===================== =====================*/
+
+
+/* ===================== placar numeração P2 =====================*/
+.p2 .score {
+  
+  /*color: var(--p2-score-color);
+  background: var(--p2-score-bg-color); */
+  color: rgb(249, 173, 32);
+  background-color: black;
+  margin-left: -6px;
+  margin-right: 6px;
+  border: solid 2px orange;
+}
+
+.p2 .sponsor {
+  color: var(--p2-sponsor-color);
+  font-size: 1.1em;
+}
+
+/* ===================== =====================*/
+
 
 .thin .p1 .score {
   margin-right: -2px;
@@ -710,32 +743,13 @@ body {
   margin-right: 6px;
 }
 
-.p1 .sponsor {
-  color: var(--p1-sponsor-color);
-}
 
-/* ===================== placar numeração P2 =====================*/
-.p2 .score {
-  
-  /*color: var(--p2-score-color);
-  background: var(--p2-score-bg-color); */
-  
-  color: rgb(249, 173, 32);
-  background-color: black;
-  margin-left: -6px;
-  margin-right: 6px;
-  border: solid 1px orange;
-}
-/* ===================== =====================*/
 
 .thin .p2 .score {
   margin-left: -2px;
   margin-right: 2px;
 }
 
-.p2 .sponsor {
-  color: var(--p2-sponsor-color);
-}
 
 .losers {
   display: inline-flex;
