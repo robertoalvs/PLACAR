@@ -710,13 +710,14 @@ body {
   background-color: black;
   margin-right: -6px;
   margin-left: 6px;
+  margin-bottom: 6px;
   border: solid 2px orange;  
 }
 
 .p1 .sponsor {
   color: var(--p1-sponsor-color);
   font-size: 1.1em;
-  padding: 7px;
+  padding: 0 7px 0 0;
 }
 
 
@@ -732,6 +733,7 @@ body {
   background-color: black;
   margin-left: -6px;
   margin-right: 6px;
+  margin-bottom: 6px;
   border: solid 2px orange;
 }
 
@@ -739,7 +741,7 @@ body {
   /* color: var(--p2-sponsor-color); */
   color: rgb(64, 149, 228);
   font-size: 1.1em;
-  padding: 7px;
+  padding: 0 7px 0 0;
 }
 
 /* ===================== =====================*/
