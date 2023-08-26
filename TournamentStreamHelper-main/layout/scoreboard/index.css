@@ -470,8 +470,10 @@ body {
   padding: 8px 16px;
 }
 
+/* ================== div do meio nome torneio =========== */
 .tournament_name {
-  font-size: 22px;
+  font-size: 25px;
+  padding-bottom: 3px;
   width: 100%;
   height: 100%;
 }
@@ -711,12 +713,12 @@ body {
   margin-right: -6px;
   margin-left: 6px;
   margin-bottom: 6px;
-  border-right: 25px transparent;  
+  border: solid 2px orange;  
 }
 
 .p1 .sponsor {
   color: var(--p1-sponsor-color);
-  font-size: 1.1em;
+  font-size: 1em;
   padding: 0 7px 0 0;
 }
 
@@ -740,7 +742,7 @@ body {
 .p2 .sponsor {
   /* color: var(--p2-sponsor-color); */
   color: rgb(64, 149, 228);
-  font-size: 1.1em;
+  font-size: 1em;
   padding: 0 7px 0 0;
 }
 
