@@ -711,7 +711,7 @@ body {
   margin-right: -6px;
   margin-left: 6px;
   margin-bottom: 6px;
-  border: solid 2px orange;  
+  border-right: 25px transparent;  
 }
 
 .p1 .sponsor {
