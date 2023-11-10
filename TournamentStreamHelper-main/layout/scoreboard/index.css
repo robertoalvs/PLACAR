@@ -78,7 +78,7 @@ body {
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
-  border-radius: 10px;
+  
   /*background: var(--bg-color);*/
   background-image: url(../scoreboard/logo-capcom01.jpg);
   background-size: cover;
@@ -92,6 +92,7 @@ body {
   height: 64px;
   top: 42px;
   padding: 0px 6px;
+  
 }
 
 .player.container > div:not(.score) > .text:not(.text_empty) {
@@ -132,7 +133,16 @@ body {
   background-position: 100% 0;
   left: 380px;
   flex-direction: row;
+  transform: skew(-20deg);
 }
+
+.p2.container {
+  background-position: 0 0;
+  right: 380px;
+  flex-direction: row-reverse;
+  transform: skew(20deg);
+}
+
 
 .fgc .p1.container {
   left: 154px;
@@ -148,12 +158,6 @@ body {
 
 .sf6 .p1.container {
   left: 248px;
-}
-
-.p2.container {
-  background-position: 0 0;
-  right: 380px;
-  flex-direction: row-reverse;
 }
 
 .fgc .p2.container {
@@ -484,6 +488,7 @@ body {
   width: 300px;
   font-size: 18px;
   padding: 8px 16px;
+
 }
 
 .tekken7 .info.container.top {
