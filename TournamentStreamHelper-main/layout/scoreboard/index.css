@@ -124,7 +124,6 @@ body {
   top: 8px;
   height: 55px;
   width: 470px;
-  
 }
 
 /* ========================== ===========================*/
@@ -472,6 +471,7 @@ body {
   flex-direction: column;
   height: 36px;
   padding: 8px 16px;
+  
 }
 
 /* ================== div do meio nome torneio =========== */
@@ -507,11 +507,11 @@ body {
   border-radius: 10px;
   font-size: 1.3em;
   background-color: black;
-  /*border-top-right-radius: 0;
-  border-top-left-radius: 0; */
   height: 45px;
+  
   /* =================== div meio do placar ========== */
 }
+
 
 .info.container.bottom {
   top: 42px;
@@ -630,8 +630,8 @@ body {
   background-size: cover;
   background-repeat: no-repeat;
   background-position: center;
-  width: 41px;
-  height: 31px;
+  width: 61px;
+  height: 41px;
   border-radius: 4px;
 }
 
