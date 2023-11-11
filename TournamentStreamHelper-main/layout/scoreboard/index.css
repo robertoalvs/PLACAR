@@ -23,16 +23,6 @@
   src: url("../scoreboard/anja_eliane/flatwheat/Flatwheat-Regular.ttf") format("truetype");
 }
 
-@font-face {
-  font-family: "guy";
-  src: url("../scoreboard/luckiest-guy/LuckiestGuy.ttf") format("truetype");
-}
-
-@font-face {
-  font-family: "merchan";
-  src: url("../scoreboard/casino_2/Casino.ttf") format("truetype");
-}
-
 @import url('https://fonts.googleapis.com/css2?family=Coiny&display=swap');
 
 
@@ -79,7 +69,7 @@ body {
 
   position: absolute;
   /*color: var(--text-color);*/
-  font-family: "guy";
+  font-family: "flat";
   /*  apagar  */
   color: black;
   
@@ -102,7 +92,6 @@ body {
 .text {
 
   transform: skew(40deg);
-  padding-top: 7px;
 }
 
 .flag {
@@ -114,7 +103,7 @@ body {
   width: 55px;
   height: 41px;
   border-radius: 4px;
-  margin-bottom: 7px;
+  margin-top: 3px;
 }
 
 
@@ -738,9 +727,9 @@ body {
 
   /* color: var(--p1-score-color); */
   /* background: var(--p1-score-bg-color); */
-  color: rgb(249, 173, 32);
+  color: rgb(248, 81, 20);
   background-color: black;
-  margin-right: -6px;
+  margin-right: -9px;
   margin-left: 6px;
   margin-bottom: 6px;
   border: solid 2px orange;  
@@ -762,9 +751,9 @@ body {
   
   /*color: var(--p2-score-color);
   background: var(--p2-score-bg-color); */
-  color: rgb(249, 173, 32);
+  color: rgb(248, 81, 20);
   background-color: black;
-  margin-left: -6px;
+  margin-left: -9px;
   margin-right: 6px;
   margin-bottom: 6px;
   border: solid 2px orange;
@@ -777,7 +766,7 @@ body {
   color: rgb(64, 149, 228);
   font-size: 1em;
   padding: 0 7px 0 0;
-  
+
 }
 
 /* ===================== =====================*/
