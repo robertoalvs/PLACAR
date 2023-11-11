@@ -91,7 +91,7 @@ body {
 
 .text {
 
-  transform: skew(35deg);
+  transform: skew(40deg);
 }
 
 .flag {
@@ -103,6 +103,7 @@ body {
   width: 55px;
   height: 41px;
   border-radius: 4px;
+  margin-top: 3px;
 }
 
 
@@ -152,7 +153,7 @@ body {
   background-position: 100% 0;
   left: 380px;
   flex-direction: row;
-  transform: skew(-35deg);
+  transform: skew(-40deg);
   
 }
 
@@ -160,7 +161,7 @@ body {
   background-position: 0 0;
   right: 380px;
   flex-direction: row-reverse;
-  transform: skew(-35deg);
+  transform: skew(-40deg);
 }
 
 
