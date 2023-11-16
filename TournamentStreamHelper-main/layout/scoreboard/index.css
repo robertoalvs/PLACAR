@@ -211,8 +211,8 @@ body {
   flex-direction: column;
   overflow: hidden;
   justify-content: center;
-  padding-left: 3px;
-  padding-right: 3px;
+  padding-left: 4px;
+  padding-right: 5px;
   box-sizing: border-box;
   max-width: 100%;
   font-size: 30px;
