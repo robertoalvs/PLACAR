@@ -13,14 +13,19 @@
   src: url("../include/Roboto-Regular.ttf") format("truetype");
 }
 
+@font-face {
+  font-family: "Brushed";
+  src: url("../layout/scoreboard/ttf-fonte/Brushed.ttf") format("trutype");
+}
+
 body {
   font-family: var(--font);
   font-weight: bold;
   opacity: 0;
   overflow: hidden;
   margin: 0;
-  width: 1920px;
-  height: 1080px;
+  width: 1400px;
+  height: 800px;
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.12))
     drop-shadow(0 3px 1px rgba(0, 0, 0, 0.14))
     drop-shadow(0 1px 5px rgba(0, 0, 0, 0.12))
@@ -49,13 +54,12 @@ body {
 /* ======================= sf6 principal ==========*/
 .container {
   position: absolute;
-  color: var(--text-color);
+  font-family: "Brushed";
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
   border-radius: var(--border-radius);
-  background-image: url(../scoreboard/web.CPT2024_singapore.jpg);
-  background-position: center bottom;
+  background-image: url(../scoreboard/logo-capcom01.jpg);
   align-items: center;
   
 }
