@@ -18,14 +18,21 @@
   src: url("../layout/scoreboard/ttf-fonte/Brushed.ttf") format("trutype");
 }
 
+@import url('https://fonts.googleapis.com/css2?family=Lilita+One&family=Rowdies:wght@300;400;700&display=swap');
+
+:root {
+
+  --font-googel: "Lilita One";
+}
+
 body {
   font-family: var(--font);
   font-weight: bold;
   opacity: 0;
   overflow: hidden;
   margin: 0;
-  width: 1400px;
-  height: 800px;
+  width: 1920px;
+  height: 1080px;
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.12))
     drop-shadow(0 3px 1px rgba(0, 0, 0, 0.14))
     drop-shadow(0 1px 5px rgba(0, 0, 0, 0.12))
@@ -54,7 +61,7 @@ body {
 /* ======================= sf6 principal ==========*/
 .container {
   position: absolute;
-  font-family: "Brushed";
+  font-family: Arial, Helvetica, sans-serif;
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
@@ -119,6 +126,7 @@ body {
   top: 60px;
 }
 
+/*=========================== sf6===========*/
 .sf6 .player.container {
   top: 10px;
   height: 48px;
@@ -1400,7 +1408,8 @@ body {
   background-repeat: no-repeat;
   background-position: center;
   width: 32px;
-  height: 24px;
+  height: 14px;
+  margin-top: 18px;
 }
 
 .tekken8 .flag {
@@ -1412,10 +1421,10 @@ body {
   width: 47px !important;
   height: 32px !important;
 }
-
+/* =========== bandeira tamanho ====== */
 .fgc .flag {
-  width: 28px;
-  height: 18px;
+  width: 48px;
+  height: 38px;
 }
 
 .sponsor_icon > div > div {
@@ -1610,7 +1619,7 @@ body {
 }
 
 .sf6 .score {
-  font-size: 34px;
+  font-size: 44px;
 }
 
 .roa2 .score {
@@ -1629,7 +1638,6 @@ body {
   background: var(--p1-score-bg-color);
   margin-right: -6px;
   margin-left: 6px;
-  border:  3px black solid;
 }
 
 /* ============== play 2 placar number ==== */
@@ -1638,7 +1646,6 @@ body {
   background: var(--p2-score-bg-color);
   margin-left: -6px;
   margin-right: 6px;
-  border:  3px black solid;
 }
 
 .thin .p1 .score {
@@ -1723,26 +1730,36 @@ body {
   border-bottom-right-radius: 0;
   border-bottom-left-radius: 0;
 }
-
+/* ===================== div meio ========= */
 .top_bg_1 {
   transform: skewX(45deg);
   transform-origin: top right;
-  left: 0;
+  left: 1;
+  top: 1;
+  color: white;
+  background-image: url('../scoreboard/capcomprotour.png');
+  border: 2px solid black;
 }
 
 .sf6 .top_bg_1 {
-  transform: skewX(35deg);
+  transform: skewX(48deg);
 }
 
 .top_bg_2 {
   transform: skewX(-45deg);
   transform-origin: top left;
   right: 0;
+  top: 1;
+  color: white;
+  background-image: url('../scoreboard/capcomprotour.png');
+  border: 2px solid black;
 }
 
 .sf6 .top_bg_2 {
-  transform: skewX(-35deg);
+  transform: skewX(-48deg);
 }
+/* =================== div meio ========= */
+
 
 .bottom_bg_1 {
   transform: skewX(45deg);
