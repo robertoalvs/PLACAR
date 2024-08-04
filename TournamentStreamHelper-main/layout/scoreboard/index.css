@@ -83,6 +83,7 @@ body {
 .container {
   position: absolute;
   font-family: "Folktale";
+  font-weight: 100;
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
@@ -157,6 +158,8 @@ body {
   border-radius: calc(var(--border-radius) / 2);
   padding: 10px 16px; /* original 0px 16px */
   border: 3px solid white;
+  margin-top: 1px; /* era sem */
+  
 }
 
 .sf6 .p2.player.container > div:not(.score) {
@@ -948,10 +951,13 @@ body {
   top: 970px;
 }
 
+
+/* ======== LOGO BOTTOM RSA === */
 .sf6 .logo {
-  width: 80px;
-  height: 80px;
-  top: 924px;
+  width: 160px;
+  height: 160px;
+  top: 874px;
+  opacity: 2;
 }
 
 .roa2 .logo {
@@ -1124,8 +1130,8 @@ body {
   overflow: visible;
   justify-content: center;
   padding-top: 23px; /* original 20 */
-  width: 380px;
-  top: 0;
+  width: 410px;
+  top: 1;
   border-top-right-radius: 0;
   border-top-left-radius: 0;
   height: 28px;
