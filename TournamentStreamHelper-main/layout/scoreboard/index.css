@@ -83,15 +83,17 @@ body {
 .container {
   position: absolute;
   font-family: "Folktale";
-  font-weight: 100;
+  font-weight: 130;
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
   border-radius: var(--border-radius);
   /*background-image: url(../scoreboard/logo-capcom01.jpg);*/
-  background-color: rgb(22, 22, 78);
+  /* background-color: rgb(22, 22, 78);*/
+  background-color: rgb(12, 12, 54);
   align-items: center;
-  color: white;
+  color: rgb(255, 255, 255);
+  /* color: white; */
 }
 
 .player.container {
@@ -161,13 +163,15 @@ body {
   margin-top: 1px; /* era sem */
   
 }
-
+/* ======= play 1 e play 2 === */
 .sf6 .p2.player.container > div:not(.score) {
   transform: skewX(35deg);
+  margin-top: 7px;
 }
 
 .sf6 .p1.player.container > div:not(.score) {
   transform: skewX(-35deg);
+  margin-top: 7px;
 }
 
 .roa2 .player.container {
@@ -1439,7 +1443,7 @@ body {
   background-position: center;
   width: 32px;
   height: 14px;
-  margin-top: 21.5px;
+  margin-top: 15.9px;
   border-radius: 50%;
 }
 
@@ -1705,14 +1709,19 @@ body {
   margin-right: -16px;
   margin-left: 16px;
 }
-/* ============= ODS| ====== */
+
+
+/* ============= ODS| sponsor ====== */
 .sponsor {
   margin-right: 6px;
-  margin-top: 6px;
 }
 
 .p1 .sponsor {
   color: var(--p1-sponsor-color);
+}
+
+.p2 .sponsor {
+  color: var(--p2-sponsor-color);
 }
 
 
@@ -1731,9 +1740,7 @@ body {
   margin-right: 16px;
 }
 
-.p2 .sponsor {
-  color: var(--p2-sponsor-color);
-}
+
 
 .losers {
   display: inline-flex;
