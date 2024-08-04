@@ -1,10 +1,10 @@
 import os
 import re
 import traceback
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import *
-from PyQt5 import uic
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
+from qtpy.QtCore import *
+from qtpy import uic
 from .Helpers.TSHCountryHelper import TSHCountryHelper
 from .StateManager import StateManager
 from .TSHGameAssetManager import TSHGameAssetManager
@@ -12,16 +12,20 @@ from .TSHPlayerDB import TSHPlayerDB
 from .TSHTournamentDataProvider import TSHTournamentDataProvider
 from .Helpers.TSHLocaleHelper import TSHLocaleHelper
 from .Workers import Worker
+import threading
 import copy
 import time
 import math
 import random
+from .Helpers.TSHBadWordFilter import TSHBadWordFilter
+from loguru import logger
+
 
 class TSHScoreboardPlayerWidgetSignals(QObject):
-    playerId_changed = pyqtSignal()
-    player1Id_changed = pyqtSignal()
-    player2Id_changed = pyqtSignal()
-    dataChanged = pyqtSignal()
+    playerId_changed = Signal()
+    player1Id_changed = Signal()
+    player2Id_changed = Signal()
+    dataChanged = Signal()
 
 
 class TSHScoreboardPlayerWidget(QGroupBox):
@@ -31,7 +35,9 @@ class TSHScoreboardPlayerWidget(QGroupBox):
 
     signals = TSHScoreboardPlayerWidgetSignals()
 
-    def __init__(self, index=0, teamNumber=0, path="", *args):
+    dataLock = threading.RLock()
+
+    def __init__(self, index=0, teamNumber=0, path="", scoreboardNumber=1, customName="", *args):
         super().__init__(*args)
 
         self.instanceSignals = TSHScoreboardPlayerWidgetSignals()
@@ -40,6 +46,8 @@ class TSHScoreboardPlayerWidget(QGroupBox):
 
         self.index = index
         self.teamNumber = teamNumber
+        self.scoreboardNumber = scoreboardNumber
+        self.customName = customName
 
         self.losers = False
 
@@ -135,7 +143,8 @@ class TSHScoreboardPlayerWidget(QGroupBox):
             self.SetupAutocomplete)
         self.SetupAutocomplete()
 
-        TSHGameAssetManager.instance.signals.onLoad.connect(self.ReloadCharacters)
+        TSHGameAssetManager.instance.signals.onLoad.connect(
+            self.ReloadCharacters)
 
         self.pronoun_completer = QCompleter()
         self.findChild(QLineEdit, "pronoun").setCompleter(
@@ -149,170 +158,197 @@ class TSHScoreboardPlayerWidget(QGroupBox):
                         if processed_line and processed_line not in self.pronoun_list:
                             self.pronoun_list.append(processed_line)
             except Exception as e:
-                print(f"ERROR: Did not find {file}")
-                print(traceback.format_exc())
+                logger.error(f"ERROR: Did not find {file}")
+                logger.error(traceback.format_exc())
         self.pronoun_model = QStringListModel()
         self.pronoun_completer.setModel(self.pronoun_model)
         self.pronoun_model.setStringList(self.pronoun_list)
-    
+
     def ComboBoxIndexChanged(self, element: QComboBox):
-        StateManager.Set(f"{self.path}.{element.objectName()}", element.currentData())
+        StateManager.Set(
+            f"{self.path}.{element.objectName()}", element.currentData())
         self.instanceSignals.dataChanged.emit()
 
-    def CharactersChanged(self):
-        characters = {}
+    def CharactersChanged(self, includeMains=False):
+        with self.dataLock:
+            characters = {}
 
-        for i, (element, character, color) in enumerate(self.character_elements):
-            data = character.currentData()
+            for i, (element, character, color) in enumerate(self.character_elements):
+                data = character.currentData()
 
-            if data == None:
-                data = {}
+                if data == None:
+                    data = {}
 
-            if character.currentData() == None:
-                data = {"name": character.currentText()}
-            
-            if color.currentData() and color.currentData().get("name", ""):
-                data["name"] = color.currentData().get("name", "")
-            
-            if color.currentData() and color.currentData().get("en_name", ""):
-                data["en_name"] = color.currentData().get("en_name", "")
+                if character.currentData() == None:
+                    data = {"name": character.currentText()}
 
-            if color.currentData() and character.currentData():
-                data["assets"] = color.currentData().get("assets", {})
+                if color.currentData() and color.currentData().get("name", ""):
+                    data["name"] = color.currentData().get("name", "")
 
-            if data.get("assets") == None:
-                data["assets"] = {}
+                if color.currentData() and color.currentData().get("en_name", ""):
+                    data["en_name"] = color.currentData().get("en_name", "")
 
-            data["skin"] = color.currentIndex()
+                if color.currentData() and character.currentData():
+                    data["assets"] = color.currentData().get("assets", {})
 
-            characters[i+1] = data
+                if data.get("assets") == None:
+                    data["assets"] = {}
 
-        StateManager.Set(
-            f"{self.path}.character", characters)
+                data["skin"] = color.currentIndex()
+
+                characters[i+1] = data
+
+            StateManager.Set(
+                f"{self.path}.character", characters)
+
+            if includeMains:
+                StateManager.Set(
+                    f"{self.path}.mains", characters)
 
     def SetLosers(self, value):
-        self.losers = value
-        self.ExportMergedName()
-    
-    def NameChanged(self):
-        team = self.findChild(QLineEdit, "team").text()
-        name = self.findChild(QLineEdit, "name").text()
-        merged = team + " " + name
-
-        if merged != self.lastExportedName:
+        with self.dataLock:
+            self.losers = value
             self.ExportMergedName()
-            self.ExportPlayerImages()
-            self.ExportPlayerId()
-            self.ExportPlayerSeed()
 
-        self.lastExportedName = merged
+    def NameChanged(self):
+        with self.dataLock:
+            team = self.findChild(QLineEdit, "team").text()
+            name = self.findChild(QLineEdit, "name").text()
+            merged = team + " " + name
+
+            if merged != self.lastExportedName:
+                self.ExportMergedName()
+                self.ExportPlayerImages()
+                self.ExportPlayerId()
+                self.ExportPlayerSeed()
+
+            self.lastExportedName = merged
 
     def ExportMergedName(self):
-        team = self.findChild(QLineEdit, "team").text()
-        name = self.findChild(QLineEdit, "name").text()
-        merged = ""
-        nameOnlyMerged = ""
+        with self.dataLock:
+            team = self.findChild(QLineEdit, "team").text()
+            name = self.findChild(QLineEdit, "name").text()
+            merged = ""
+            nameOnlyMerged = ""
 
-        if team != "":
-            merged += team+" | "
+            if team != "":
+                merged += team+" | "
 
-        merged += name
-        nameOnlyMerged += name
+            merged += name
+            nameOnlyMerged += name
 
-        if self.losers:
-            merged += " [L]"
-            nameOnlyMerged += " [L]"
+            if self.losers:
+                merged += " [L]"
+                nameOnlyMerged += " [L]"
 
-        StateManager.Set(
-            f"{self.path}.mergedName", merged)
-        StateManager.Set(
-            f"{self.path}.mergedOnlyName", nameOnlyMerged)
+            StateManager.Set(
+                f"{self.path}.mergedName", merged)
+            StateManager.Set(
+                f"{self.path}.mergedOnlyName", nameOnlyMerged)
 
     def ExportPlayerImages(self, onlineAvatar=None):
-        team = self.findChild(QLineEdit, "team").text()
-        name = self.findChild(QLineEdit, "name").text()
-        merged = ""
+        with self.dataLock:
+            team = self.findChild(QLineEdit, "team").text()
+            name = self.findChild(QLineEdit, "name").text()
+            merged = ""
 
-        if team != "":
-            merged += team+" "
+            if team != "":
+                merged += team+" "
 
-        merged += name
+            merged += name
 
-        merged = merged.replace("/", " ")
-        merged = merged.replace(":", " ")
+            merged = merged.replace("/", " ")
+            merged = merged.replace(":", " ")
 
-        # Online avatar
-        StateManager.Set(
-            f"{self.path}.online_avatar", onlineAvatar)
-
-        # Local avatar
-        if os.path.exists(f"./user_data/player_avatar/{merged}.png"):
+            # Online avatar
             StateManager.Set(
-                f"{self.path}.avatar", f"./user_data/player_avatar/{merged}.png")
-        else:
-            StateManager.Set(
-                f"{self.path}.avatar", None)
+                f"{self.path}.online_avatar", onlineAvatar)
 
-        # Sponsor logo
-        if os.path.exists(f"./user_data/sponsor_logo/{team.upper()}.png"):
-            StateManager.Set(
-                f"{self.path}.sponsor_logo", f"./user_data/sponsor_logo/{team.upper()}.png")
-        else:
-            StateManager.Set(
-                f"{self.path}.sponsor_logo", None)
+            # Local avatar
+            if os.path.exists(f"./user_data/player_avatar/{merged}.png"):
+                StateManager.Set(
+                    f"{self.path}.avatar", f"./user_data/player_avatar/{merged}.png")
+            else:
+                StateManager.Set(
+                    f"{self.path}.avatar", None)
+
+            # Sponsor logo
+            if os.path.exists(f"./user_data/sponsor_logo/{team.upper()}.png"):
+                StateManager.Set(
+                    f"{self.path}.sponsor_logo", f"./user_data/sponsor_logo/{team.upper()}.png")
+            else:
+                StateManager.Set(
+                    f"{self.path}.sponsor_logo", None)
 
     def ExportPlayerId(self, id=None):
-        if StateManager.Get(f"{self.path}.id") != id:
-            StateManager.Set(
-                f"{self.path}.id", id)
-            self.instanceSignals.playerId_changed.emit()
-            if self.path.startswith("score.team.1"):
-                self.instanceSignals.player1Id_changed.emit()
-            else:
-                self.instanceSignals.player2Id_changed.emit()
-    
+        with self.dataLock:
+            if StateManager.Get(f"{self.path}.id") != id:
+                StateManager.Set(
+                    f"{self.path}.id", id)
+                if "score" in self.path:
+                    self.instanceSignals.playerId_changed.emit()
+                    if "team.1" in self.path:
+                        self.instanceSignals.player1Id_changed.emit()
+                    else:
+                        self.instanceSignals.player2Id_changed.emit()
+
     def ExportPlayerSeed(self, seed=None):
-        if StateManager.Get(f"{self.path}.seed") != seed:
-            StateManager.Set(
-                f"{self.path}.seed", seed)
+        with self.dataLock:
+            if StateManager.Get(f"{self.path}.seed") != seed:
+                StateManager.Set(
+                    f"{self.path}.seed", seed)
 
     def SwapWith(self, other: "TSHScoreboardPlayerWidget"):
-        tmpData = []
+        if self == other:
+            logger.info("Swapping player with themselves")
+            return
+        try:
+            StateManager.BlockSaving()
+            with self.dataLock:
+                with other.dataLock:
+                    tmpData = []
 
-        # Save state
-        for w in [self, other]:
-            data = {}
-            for widget in w.findChildren(QWidget):
-                if type(widget) == QLineEdit:
-                    data[widget.objectName()] = widget.text()
-                if type(widget) == QComboBox:
-                    data[widget.objectName()] = widget.currentIndex()
-            data["online_avatar"] = StateManager.Get(
-                f"{w.path}.online_avatar")
-            data["id"] = StateManager.Get(
-                f"{w.path}.id")
-            data["seed"] = StateManager.Get(
-                f"{w.path}.seed")
-            tmpData.append(data)
+                    # Save state
+                    for w in [self, other]:
+                        data = {}
+                        for widget in w.findChildren(QWidget):
+                            if type(widget) == QLineEdit:
+                                data[widget.objectName()] = widget.text()
+                            if type(widget) == QComboBox:
+                                data[widget.objectName()] = widget.currentIndex()
+                        data["online_avatar"] = StateManager.Get(
+                            f"{w.path}.online_avatar")
+                        data["id"] = StateManager.Get(
+                            f"{w.path}.id")
+                        data["seed"] = StateManager.Get(
+                            f"{w.path}.seed")
+                        tmpData.append(data)
 
-        # Load state
-        for i, w in enumerate([other, self]):
-            for objName in tmpData[i]:
-                widget = w.findChild(QWidget, objName)
-                if widget:
-                    if type(widget) == QLineEdit:
-                        widget.setText(tmpData[i][objName])
-                        widget.editingFinished.emit()
-                    if type(widget) == QComboBox:
-                        widget.setCurrentIndex(tmpData[i][objName])
-            QCoreApplication.processEvents()
-            w.ExportPlayerImages(tmpData[i]["online_avatar"])
-            w.ExportPlayerId(tmpData[i]["id"])
-            StateManager.Set(f"{w.path}.seed", tmpData[i]["seed"])
+                    # Load state
+                    for i, w in enumerate([other, self]):
+                        for objName in tmpData[i]:
+                            widget = w.findChild(QWidget, objName)
+                            if widget:
+                                if type(widget) == QLineEdit:
+                                    widget.setText(tmpData[i][objName])
+                                    widget.editingFinished.emit()
+                                if type(widget) == QComboBox:
+                                    widget.setCurrentIndex(tmpData[i][objName])
+                        QCoreApplication.processEvents()
+                        w.ExportPlayerImages(tmpData[i]["online_avatar"])
+                        w.ExportPlayerId(tmpData[i]["id"])
+                        StateManager.Set(f"{w.path}.seed", tmpData[i]["seed"])
+        finally:
+            StateManager.ReleaseSaving()
 
     def SetIndex(self, index: int, team: int):
-        self.findChild(QWidget, "title").setText(
-            QApplication.translate("app", "Player {0}").format(index))
+        if self.customName == "":
+            self.findChild(QWidget, "title").setText(
+                QApplication.translate("app", "Player {0}").format(index))
+        else:
+            title = self.customName + " {0}"
+            self.findChild(QWidget, "title").setText(
+                QApplication.translate("app", title).format(index))
         self.index = index
         self.teamNumber = team
 
@@ -330,10 +366,12 @@ class TSHScoreboardPlayerWidget(QGroupBox):
             player_character.view().setMinimumWidth(60)
             player_character.completer().setCompletionMode(QCompleter.PopupCompletion)
             player_character.completer().popup().setMinimumWidth(250)
-            player_character.setModel(TSHGameAssetManager.instance.characterModel)
+            player_character.setModel(
+                TSHGameAssetManager.instance.characterModel)
             player_character.setIconSize(QSize(24, 24))
             player_character.setFixedHeight(32)
-            player_character.setFont(QFont(player_character.font().family(), 9))
+            player_character.setFont(
+                QFont(player_character.font().family(), 9))
             player_character.lineEdit().setFont(QFont(player_character.font().family(), 9))
 
             player_character_color = QComboBox()
@@ -342,7 +380,8 @@ class TSHScoreboardPlayerWidget(QGroupBox):
             player_character_color.setFixedHeight(32)
             player_character_color.setMinimumWidth(64)
             player_character_color.setMaximumWidth(120)
-            player_character_color.setFont(QFont(player_character_color.font().family(), 9))
+            player_character_color.setFont(
+                QFont(player_character_color.font().family(), 9))
             view = QListView()
             view.setIconSize(QSize(128, 128))
             player_character_color.setView(view)
@@ -354,12 +393,14 @@ class TSHScoreboardPlayerWidget(QGroupBox):
             btMoveUp.setFixedSize(24, 24)
             btMoveUp.setIcon(QIcon("./assets/icons/arrow_up.svg"))
             character_element.layout().addWidget(btMoveUp)
-            btMoveUp.clicked.connect(lambda checked, index=len(self.character_elements): self.SwapCharacters(index, index-1))
+            btMoveUp.clicked.connect(lambda x=None, index=len(
+                self.character_elements): self.SwapCharacters(index, index-1))
             btMoveDown = QPushButton()
             btMoveDown.setFixedSize(24, 24)
             btMoveDown.setIcon(QIcon("./assets/icons/arrow_down.svg"))
             character_element.layout().addWidget(btMoveDown)
-            btMoveDown.clicked.connect(lambda checked, index=len(self.character_elements): self.SwapCharacters(index, index+1))
+            btMoveDown.clicked.connect(lambda x=None, index=len(
+                self.character_elements): self.SwapCharacters(index, index+1))
 
             # Add line to characters
             self.character_container.layout().addWidget(character_element)
@@ -392,12 +433,13 @@ class TSHScoreboardPlayerWidget(QGroupBox):
             self.character_elements[-1][0].setParent(None)
             self.character_elements.pop()
 
-        self.CharactersChanged()
-    
+        self.CharactersChanged(includeMains=True)
+
     def SwapCharacters(self, index1: int, index2: int):
         StateManager.BlockSaving()
 
-        if index2 > len(self.character_elements)-1: index2 = 0
+        if index2 > len(self.character_elements)-1:
+            index2 = 0
 
         char1 = self.character_elements[index1]
         char2 = self.character_elements[index2]
@@ -412,7 +454,7 @@ class TSHScoreboardPlayerWidget(QGroupBox):
             char1[1].setCurrentIndex(found)
         else:
             char1[1].setCurrentText(char2[1].currentText())
-        
+
         # Color
         char1[2].setCurrentIndex(char2[2].currentIndex())
 
@@ -423,7 +465,7 @@ class TSHScoreboardPlayerWidget(QGroupBox):
             char2[1].setCurrentIndex(found)
         else:
             char2[1].setCurrentText(tmp[0])
-        
+
         # Color
         char2[2].setCurrentIndex(tmp[1])
 
@@ -464,7 +506,7 @@ class TSHScoreboardPlayerWidget(QGroupBox):
             state.lineEdit().setFont(QFont(state.font().family(), 9))
 
         except Exception as e:
-            print(e)
+            logger.error(traceback.format_exc())
             exit()
 
     def LoadStates(self, index):
@@ -510,7 +552,8 @@ class TSHScoreboardPlayerWidget(QGroupBox):
         characterData = element.currentData()
 
         if characterData:
-            target.setModel(TSHGameAssetManager.instance.skinModels.get(characterData.get("en_name")))
+            target.setModel(TSHGameAssetManager.instance.skinModels.get(
+                characterData.get("en_name")))
         else:
             target.setModel(QStandardItemModel())
 
@@ -524,7 +567,7 @@ class TSHScoreboardPlayerWidget(QGroupBox):
         if TSHPlayerDB.model:
             self.findChild(QLineEdit, "name").setCompleter(QCompleter())
             self.findChild(QLineEdit, "name").completer().activated[QModelIndex].connect(
-                lambda x: self.SetData(x.data(Qt.ItemDataRole.UserRole)), Qt.QueuedConnection)
+                lambda x: self.SetData(x.data(Qt.ItemDataRole.UserRole)) if x is not None else None, Qt.QueuedConnection)
             self.findChild(QLineEdit, "name").completer().setCaseSensitivity(
                 Qt.CaseSensitivity.CaseInsensitive)
             self.findChild(QLineEdit, "name").completer(
@@ -535,126 +578,146 @@ class TSHScoreboardPlayerWidget(QGroupBox):
             self.ManageSavePlayerToDBText()
             self.ManageDeletePlayerFromDBActive()
 
-    def SetData(self, data, dontLoadFromDB=False, clear=True):
+    def SetData(self, data, dontLoadFromDB=False, clear=True, no_mains=False):
+        self.dataLock.acquire()
         StateManager.BlockSaving()
 
-        if clear:
-            self.Clear()
+        try:
+            if clear:
+                self.Clear(no_mains=no_mains)
 
-        # Load player data from DB; will be overwriten by incoming data
-        if not dontLoadFromDB and clear:
-            tag = data.get(
-                "prefix")+" "+data.get("gamerTag") if data.get("prefix") else data.get("gamerTag")
+            # Load player data from DB; will be overwriten by incoming data
+            if not dontLoadFromDB:
+                tag = data.get(
+                    "prefix")+" "+data.get("gamerTag") if data.get("prefix") else data.get("gamerTag")
 
-            for i in range(TSHPlayerDB.model.rowCount()):
-                item = TSHPlayerDB.model.item(i).data(Qt.ItemDataRole.UserRole)
+                for i in range(TSHPlayerDB.model.rowCount()):
+                    item = TSHPlayerDB.model.item(
+                        i).data(Qt.ItemDataRole.UserRole)
 
-                dbTag = item.get(
-                    "prefix")+" "+item.get("gamerTag") if item.get("prefix") else item.get("gamerTag")
+                    dbTag = item.get(
+                        "prefix")+" "+item.get("gamerTag") if item.get("prefix") else item.get("gamerTag")
 
-                if tag == dbTag:
-                    self.SetData(item, dontLoadFromDB=True, clear=False)
-                    break
-
-        name = self.findChild(QWidget, "name")
-        if data.get("gamerTag") and data.get("gamerTag") != name.text():
-            name.setText(f'{data.get("gamerTag")}')
-            name.editingFinished.emit()
-
-        team = self.findChild(QWidget, "team")
-        if data.get("prefix") and data.get("prefix") != team.text():
-            team.setText(f'{data.get("prefix")}')
-            team.editingFinished.emit()
-
-        real_name = self.findChild(QWidget, "real_name")
-        if data.get("name") and data.get("name") != real_name.text():
-            real_name.setText(f'{data.get("name")}')
-            real_name.editingFinished.emit()
-
-        if data.get("avatar"):
-            self.ExportPlayerImages(data.get("avatar"))
-
-        if data.get("id"):
-            self.ExportPlayerId(data.get("id"))
-        
-        if data.get("seed"):
-            self.ExportPlayerSeed(data.get("seed"))
-
-        twitter = self.findChild(QWidget, "twitter")
-        if data.get("twitter") and data.get("twitter") != twitter.text():
-            twitter.setText(
-                f'{data.get("twitter")}')
-            twitter.editingFinished.emit()
-
-        pronoun = self.findChild(QWidget, "pronoun")
-        if data.get("pronoun") and data.get("pronoun") != pronoun.text():
-            pronoun.setText(
-                f'{data.get("pronoun")}')
-            pronoun.editingFinished.emit()
-
-        if data.get("country_code"):
-            countryElement: QComboBox = self.findChild(
-                QComboBox, "country")
-            countryIndex = 0
-            for i in range(TSHCountryHelper.countryModel.rowCount()):
-                item = TSHCountryHelper.countryModel.item(
-                    i).data(Qt.ItemDataRole.UserRole)
-                if item:
-                    if data.get("country_code") == item.get("code"):
-                        countryIndex = i
+                    if tag == dbTag:
+                        self.SetData(item, dontLoadFromDB=True, clear=False, no_mains=no_mains)
                         break
-            countryElement.setCurrentIndex(countryIndex)
 
-        if data.get("state_code"):
-            countryElement: QComboBox = self.findChild(
-                QComboBox, "country")
-            stateElement: QComboBox = self.findChild(QComboBox, "state")
-            stateIndex = 0
-            for i in range(stateElement.model().rowCount()):
-                item = stateElement.model().item(i).data(Qt.ItemDataRole.UserRole)
-                if item:
-                    if data.get("state_code") == item.get("code"):
-                        stateIndex = i
-                        break
-            stateElement.setCurrentIndex(stateIndex)
+            name = self.findChild(QWidget, "name")
+            if data.get("gamerTag") and data.get("gamerTag") != name.text():
+                data["gamerTag"] = TSHBadWordFilter.Censor(
+                    data["gamerTag"], data.get("country_code"))
+                name.setText(f'{data.get("gamerTag")}')
+                name.editingFinished.emit()
 
-        if data.get("mains"):
-            if type(data.get("mains")) == list:
-                for element in self.character_elements:
-                    character_element = element[1]
-                    characterIndex = 0
-                    for i in range(character_element.model().rowCount()):
-                        item = character_element.model().item(i).data(Qt.ItemDataRole.UserRole)
-                        if item:
-                            if item.get("en_name") == data.get("mains")[0]:
-                                characterIndex = i
-                                break
-                    character_element.setCurrentIndex(characterIndex)
-            elif type(data.get("mains")) == dict:
-                mains = data.get("mains").get(
-                    TSHGameAssetManager.instance.selectedGame.get("codename"), [])
+            team = self.findChild(QWidget, "team")
+            if data.get("prefix") and data.get("prefix") != team.text():
+                data["prefix"] = TSHBadWordFilter.Censor(
+                    data["prefix"], data.get("country_code"))
+                team.setText(f'{data.get("prefix")}')
+                team.editingFinished.emit()
 
-                for i, main in enumerate(mains):
-                    if i < len(self.character_elements):
-                        character_element = self.character_elements[i][1]
-                        color_element = self.character_elements[i][2]
+            real_name = self.findChild(QWidget, "real_name")
+            if data.get("name") and data.get("name") != real_name.text():
+                data["name"] = TSHBadWordFilter.Censor(
+                    data["name"], data.get("country_code"))
+                real_name.setText(f'{data.get("name")}')
+                real_name.editingFinished.emit()
+
+            if data.get("avatar"):
+                self.ExportPlayerImages(data.get("avatar"))
+
+            if data.get("id"):
+                self.ExportPlayerId(data.get("id"))
+
+            if data.get("seed"):
+                self.ExportPlayerSeed(data.get("seed"))
+
+            twitter = self.findChild(QWidget, "twitter")
+            if data.get("twitter") and data.get("twitter") != twitter.text():
+                data["twitter"] = TSHBadWordFilter.Censor(
+                    data["twitter"], data.get("country_code"))
+                twitter.setText(
+                    f'{data.get("twitter")}')
+                twitter.editingFinished.emit()
+
+            pronoun = self.findChild(QWidget, "pronoun")
+            if data.get("pronoun") and data.get("pronoun") != pronoun.text():
+                data["pronoun"] = TSHBadWordFilter.Censor(
+                    data["pronoun"], data.get("country_code"))
+                pronoun.setText(
+                    f'{data.get("pronoun")}')
+                pronoun.editingFinished.emit()
+
+            if data.get("country_code"):
+                countryElement: QComboBox = self.findChild(
+                    QComboBox, "country")
+                countryIndex = 0
+                for i in range(TSHCountryHelper.countryModel.rowCount()):
+                    item = TSHCountryHelper.countryModel.item(
+                        i).data(Qt.ItemDataRole.UserRole)
+                    if item:
+                        if data.get("country_code") == item.get("code"):
+                            countryIndex = i
+                            break
+                if countryElement.currentIndex() != countryIndex:
+                    countryElement.setCurrentIndex(countryIndex)
+
+            if data.get("state_code"):
+                countryElement: QComboBox = self.findChild(
+                    QComboBox, "country")
+                stateElement: QComboBox = self.findChild(QComboBox, "state")
+                stateIndex = 0
+                for i in range(stateElement.model().rowCount()):
+                    item = stateElement.model().item(i).data(Qt.ItemDataRole.UserRole)
+                    if item:
+                        if data.get("state_code") == item.get("code"):
+                            stateIndex = i
+                            break
+                if stateElement.currentIndex() != stateIndex:
+                    stateElement.setCurrentIndex(stateIndex)
+
+            if data.get("mains") and no_mains != True:
+                if type(data.get("mains")) == list:
+                    for element in self.character_elements:
+                        character_element = element[1]
                         characterIndex = 0
                         for i in range(character_element.model().rowCount()):
                             item = character_element.model().item(i).data(Qt.ItemDataRole.UserRole)
                             if item:
-                                if item.get("en_name") == main[0]:
+                                if item.get("en_name") == data.get("mains")[0]:
                                     characterIndex = i
                                     break
                         character_element.setCurrentIndex(characterIndex)
-                        if len(main) > 1:
-                            color_element.setCurrentIndex(int(main[1]))
-                        else:
-                            color_element.setCurrentIndex(0)
-        
-        if data.get("seed"):
-            StateManager.Set(f"{self.path}.seed", data.get("seed"))
-                            
-        StateManager.ReleaseSaving()
+                elif type(data.get("mains")) == dict:
+                    mains = data.get("mains").get(
+                        TSHGameAssetManager.instance.selectedGame.get("codename"), [])
+
+                    for i, main in enumerate(mains):
+                        if i < len(self.character_elements):
+                            character_element = self.character_elements[i][1]
+                            color_element = self.character_elements[i][2]
+                            characterIndex = 0
+                            for i in range(character_element.model().rowCount()):
+                                item = character_element.model().item(i).data(Qt.ItemDataRole.UserRole)
+                                if item:
+                                    if item.get("en_name") == main[0]:
+                                        characterIndex = i
+                                        break
+                            if character_element.currentIndex() != characterIndex:
+                                character_element.setCurrentIndex(
+                                    characterIndex)
+                            if len(main) > 1:
+                                if color_element.currentIndex() != int(main[1]):
+                                    color_element.setCurrentIndex(int(main[1]))
+                            else:
+                                if color_element.currentIndex() != 0:
+                                    color_element.setCurrentIndex(0)
+
+            if data.get("seed"):
+                StateManager.Set(f"{self.path}.seed", data.get("seed"))
+        finally:
+            StateManager.ReleaseSaving()
+            self.dataLock.release()
 
     def GetCurrentPlayerTag(self):
         gamerTag = self.findChild(QWidget, "name").text()
@@ -683,7 +746,7 @@ class TSHScoreboardPlayerWidget(QGroupBox):
                 else:
                     data["name"] = ""
 
-                data["skin"] = color.currentText()
+                data["skin"] = color.currentIndex()
 
                 if data["skin"] == None:
                     data["skin"] = 0
@@ -705,11 +768,13 @@ class TSHScoreboardPlayerWidget(QGroupBox):
 
         TSHPlayerDB.AddPlayers([playerData], overwrite=True)
 
-        if playerData["pronoun"] not in self.pronoun_list:
+        if playerData.get("pronoun") and playerData["pronoun"] not in self.pronoun_list:
             with open("./user_data/pronouns_list.txt", 'at') as pronouns_file:
                 pronouns_file.write(playerData["pronoun"] + "\n")
                 self.pronoun_list.append(playerData["pronoun"])
                 self.pronoun_model.setStringList(self.pronoun_list)
+
+        self.CharactersChanged(includeMains=True)
 
     def ManageSavePlayerToDBText(self):
         tag = self.GetCurrentPlayerTag()
@@ -733,11 +798,24 @@ class TSHScoreboardPlayerWidget(QGroupBox):
         tag = self.GetCurrentPlayerTag()
         TSHPlayerDB.DeletePlayer(tag)
 
-    def Clear(self):
-        for c in self.findChildren(QLineEdit):
-            if c.text() != "":
-                c.setText("")
-                c.editingFinished.emit()
+    def Clear(self, no_mains=False):
+        StateManager.BlockSaving()
+        with self.dataLock:
+            for c in self.findChildren(QLineEdit):
+                if c.text() != "":
+                    c.setText("")
+                    c.editingFinished.emit()
 
-        for c in self.findChildren(QComboBox):
-            c.setCurrentIndex(0)
+            for c in self.findChildren(QComboBox):
+                if(no_mains):
+                    for charelem in self.character_elements:
+                        for i in range(len(charelem)):
+                            if charelem[i] == c:
+                                break
+                        else:
+                            c.setCurrentIndex(0)
+                        continue  # only executed if the inner loop DID break
+                else:
+                    c.setCurrentIndex(0)
+        StateManager.Unset(f"{self.path}.seed")
+        StateManager.ReleaseSaving()

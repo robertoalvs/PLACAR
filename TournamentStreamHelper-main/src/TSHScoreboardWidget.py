@@ -1,89 +1,144 @@
 import platform
 import subprocess
 
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import *
-from PyQt5 import uic
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
+from qtpy.QtCore import *
+from qtpy import uic
+from typing import List
+from src.TSHColorButton import TSHColorButton
 
 from src.TSHSelectSetWindow import TSHSelectSetWindow
+from src.TSHSelectStationWindow import TSHSelectStationWindow
 
-from .TSHScoreboardPlayerWidget import *
-from .SettingsManager import *
-from .StateManager import *
+from .TSHScoreboardPlayerWidget import TSHScoreboardPlayerWidget
+from .SettingsManager import SettingsManager
+from .StateManager import StateManager
 from .TSHTournamentDataProvider import TSHTournamentDataProvider
-from .TSHScoreboardStageWidget import TSHScoreboardStageWidget
 from .TSHStatsUtil import TSHStatsUtil
 from .TSHHotkeys import TSHHotkeys
+from .TSHPlayerDB import TSHPlayerDB
 
 from .thumbnail import main_generate_thumbnail as thumbnail
 from .TSHThumbnailSettingsWidget import *
 
 
+empty = {}
+
+
+class QueueSetsCache:
+    queue = []
+
+    def UpdateQueue(self, q):
+        self.queue = q
+
+    def CheckQueue(self, q):
+        logger.info("----------------- CHECKING QUEUES -------------------")
+        if q is None:
+            return False
+
+        if len(self.queue) != len(q):
+            return False
+
+        for i in range(len(q)):
+            savedSet = self.queue[i]
+            incSet = q[i]
+
+            if savedSet.get("id") != incSet.get("id"):
+                return False
+
+            if savedSet.get("state") != incSet.get("state"):
+                return False
+
+            savedSlots = savedSet.get("slots", [empty, empty])
+            incSlots = incSet.get("slots", [empty, empty])
+
+            if deep_get(savedSlots[0], "entrant.id") != deep_get(incSlots[0], "entrant.id"):
+                return False
+
+            if deep_get(savedSlots[1], "entrant.id") != deep_get(incSlots[1], "entrant.id"):
+                return False
+
+        logger.info("----------------- QUEUES CHECK OK -------------------")
+        return True
+
+
 class TSHScoreboardWidgetSignals(QObject):
-    UpdateSetData = pyqtSignal(object)
-    NewSetSelected = pyqtSignal(object)
-    SetSelection = pyqtSignal()
-    StreamSetSelection = pyqtSignal()
-    UserSetSelection = pyqtSignal()
-    CommandScoreChange = pyqtSignal(int, int)
-    SwapTeams = pyqtSignal()
+    UpdateSetData = Signal(object)
+    NewSetSelected = Signal(object)
+    SetSelection = Signal()
+    StreamSetSelection = Signal()
+    StationSelection = Signal()
+    StationSelected = Signal(object)
+    StationSetsLoaded = Signal(object)
+    UserSetSelection = Signal()
+    CommandScoreChange = Signal(int, int)
+    CommandTeamColor = Signal(int, str)
+    SwapTeams = Signal()
+    ChangeSetData = Signal(dict)
 
 
-class TSHScoreboardWidget(QDockWidget):
-    def __init__(self, *args):
+class TSHScoreboardWidget(QWidget):
+    stationQueueCache = QueueSetsCache()
+
+    def __init__(self, scoreboardNumber=1, *args):
         super().__init__(*args)
 
-        StateManager.Set("score", {})
-        StateManager.Set("score.last_sets.1", {})
-        StateManager.Set("score.last_sets.2", {})
-        StateManager.Set("score.history_sets.1", {})
-        StateManager.Set("score.history_sets.2", {})
+        self.scoreboardNumber = scoreboardNumber
+
+        StateManager.Set(f"score.{self.scoreboardNumber}", {})
+        StateManager.Set(f"score.{self.scoreboardNumber}.last_sets.1", {})
+        StateManager.Set(f"score.{self.scoreboardNumber}.last_sets.2", {})
+        StateManager.Set(f"score.{self.scoreboardNumber}.history_sets.1", {})
+        StateManager.Set(f"score.{self.scoreboardNumber}.history_sets.2", {})
+        StateManager.Set(f"score.{self.scoreboardNumber}.station_queue", {})
 
         self.signals = TSHScoreboardWidgetSignals()
         self.signals.UpdateSetData.connect(self.UpdateSetData)
         self.signals.NewSetSelected.connect(self.NewSetSelected)
+        self.signals.StationSetsLoaded.connect(self.StationSetsLoaded)
         self.signals.SetSelection.connect(self.LoadSetClicked)
-        TSHHotkeys.signals.load_set.connect(self.LoadSetClicked)
-        self.signals.StreamSetSelection.connect(self.LoadStreamSetClicked)
+        self.signals.StationSelected.connect(self.LoadStationSets)
+        self.signals.StationSelection.connect(self.LoadStationSetClicked)
         self.signals.UserSetSelection.connect(self.LoadUserSetClicked)
+        self.signals.ChangeSetData.connect(self.ChangeSetData)
 
-        TSHHotkeys.signals.load_set.connect(self.LoadSetClicked)
-        TSHHotkeys.signals.swap_teams.connect(self.SwapTeams)
-        TSHHotkeys.signals.reset_scores.connect(self.ResetScore)
+        if self.scoreboardNumber == 1:
+            TSHHotkeys.signals.load_set.connect(self.LoadSetClicked)
+            TSHHotkeys.signals.swap_teams.connect(self.SwapTeams)
+            TSHHotkeys.signals.reset_scores.connect(self.ResetScore)
 
-        TSHHotkeys.signals.team1_score_up.connect(lambda: [
-            self.CommandScoreChange(0, 1)
-        ])
+            TSHHotkeys.signals.team1_score_up.connect(lambda: [
+                self.CommandScoreChange(0, 1)
+            ])
 
-        TSHHotkeys.signals.team1_score_down.connect(lambda: [
-            self.CommandScoreChange(0, -1)
-        ])
+            TSHHotkeys.signals.team1_score_down.connect(lambda: [
+                self.CommandScoreChange(0, -1)
+            ])
 
-        TSHHotkeys.signals.team2_score_up.connect(lambda: [
-            self.CommandScoreChange(1, 1)
-        ])
+            TSHHotkeys.signals.team2_score_up.connect(lambda: [
+                self.CommandScoreChange(1, 1)
+            ])
 
-        TSHHotkeys.signals.team2_score_down.connect(lambda: [
-            self.CommandScoreChange(1, -1)
-        ])
+            TSHHotkeys.signals.team2_score_down.connect(lambda: [
+                self.CommandScoreChange(1, -1)
+            ])
 
         self.signals.CommandScoreChange.connect(self.CommandScoreChange)
         self.signals.SwapTeams.connect(self.SwapTeams)
+        self.signals.CommandTeamColor.connect(self.CommandTeamColor)
 
-        TSHStatsUtil.instance.scoreboard = self
+        self.stats = TSHStatsUtil(self.scoreboardNumber, self)
 
         self.lastSetSelected = None
+
+        self.lastStationSelected = None
 
         self.autoUpdateTimer: QTimer = None
         self.timeLeftTimer: QTimer = None
 
-        self.setWindowTitle(QApplication.translate("app", "Scoreboard"))
-        self.setFloating(True)
-        self.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
-        self.widget = QWidget()
-        self.setWidget(self.widget)
-        self.widget.setLayout(QVBoxLayout())
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        self.setLayout(QVBoxLayout())
 
         self.innerWidget = QWidget()
         self.innerWidget.setLayout(QVBoxLayout())
@@ -95,17 +150,10 @@ class TSHScoreboardWidget(QDockWidget):
         self.scrollArea.setStyleSheet(
             "QTabWidget::pane { margin: 0px,0px,0px,0px }")
 
-        self.widget.layout().addWidget(self.scrollArea)
-
-        # StateManager.Set("score", {})
-
-        self.setFloating(True)
-        self.setWindowFlags(Qt.WindowType.Window)
+        self.layout().addWidget(self.scrollArea)
 
         topOptions = QWidget()
         topOptions.setLayout(QHBoxLayout())
-        topOptions.layout().setSpacing(0)
-        topOptions.layout().setContentsMargins(0, 0, 0, 0)
         topOptions.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Maximum)
 
         self.innerWidget.layout().addWidget(topOptions)
@@ -113,8 +161,6 @@ class TSHScoreboardWidget(QDockWidget):
         col = QWidget()
         col.setLayout(QVBoxLayout())
         topOptions.layout().addWidget(col)
-        col.setContentsMargins(0, 0, 0, 0)
-        col.layout().setSpacing(0)
         self.charNumber = QSpinBox()
         col.layout().addWidget(QLabel(QApplication.translate("app", "Characters per player")))
         col.layout().addWidget(self.charNumber)
@@ -124,8 +170,6 @@ class TSHScoreboardWidget(QDockWidget):
         col.setLayout(QVBoxLayout())
         topOptions.layout().addWidget(col)
         topOptions.layout().addStretch()
-        col.setContentsMargins(0, 0, 0, 0)
-        col.layout().setSpacing(0)
         self.playerNumber = QSpinBox()
         col.layout().addWidget(QLabel(QApplication.translate("app", "Players per team")))
         col.layout().addWidget(self.playerNumber)
@@ -137,8 +181,6 @@ class TSHScoreboardWidget(QDockWidget):
         col.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
         col.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         topOptions.layout().addWidget(col)
-        col.setContentsMargins(0, 0, 0, 0)
-        col.layout().setSpacing(0)
 
         self.thumbnailBtn = QPushButton(
             QApplication.translate("app", "Generate Thumbnail") + " ")
@@ -154,8 +196,6 @@ class TSHScoreboardWidget(QDockWidget):
         col.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
         col.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         topOptions.layout().addWidget(col)
-        col.setContentsMargins(0, 0, 0, 0)
-        col.layout().setSpacing(0)
 
         self.eyeBt = QToolButton()
         self.eyeBt.setIcon(QIcon('assets/icons/eye.svg'))
@@ -163,9 +203,10 @@ class TSHScoreboardWidget(QDockWidget):
             QSizePolicy.Maximum, QSizePolicy.Fixed)
         col.layout().addWidget(self.eyeBt, Qt.AlignmentFlag.AlignRight)
         self.eyeBt.setPopupMode(QToolButton.InstantPopup)
-        self.eyeBt.setMenu(QMenu())
+        menu = QMenu()
+        self.eyeBt.setMenu(menu)
 
-        self.eyeBt.menu().addSection("Players")
+        menu.addSection("Players")
 
         self.elements = [
             ["Real Name", ["real_name", "real_nameLabel"]],
@@ -186,9 +227,9 @@ class TSHScoreboardWidget(QDockWidget):
             action.toggled.connect(
                 lambda toggled, action=action, element=element: self.ToggleElements(action, element[1]))
 
-        self.playerWidgets = []
-        self.team1playerWidgets = []
-        self.team2playerWidgets = []
+        self.playerWidgets: List[TSHScoreboardPlayerWidget] = []
+        self.team1playerWidgets: List[TSHScoreboardPlayerWidget] = []
+        self.team2playerWidgets: List[TSHScoreboardPlayerWidget] = []
 
         self.team1swaps = []
         self.team2swaps = []
@@ -214,53 +255,44 @@ class TSHScoreboardWidget(QDockWidget):
         hbox = QHBoxLayout()
         bottomOptions.layout().addLayout(hbox)
 
-        self.btLoadStreamSet = QPushButton(
-            QApplication.translate("app", "Load current stream set"))
-        self.btLoadStreamSet.setIcon(QIcon("./assets/icons/twitch.svg"))
-        self.btLoadStreamSet.setEnabled(False)
-        hbox.addWidget(self.btLoadStreamSet)
-        self.btLoadStreamSet.clicked.connect(
-            self.signals.StreamSetSelection.emit)
-        TSHTournamentDataProvider.instance.signals.twitch_username_updated.connect(
-            self.UpdateStreamButton)
-
-        self.btLoadStreamSetOptions = QPushButton()
-        self.btLoadStreamSetOptions.setSizePolicy(
-            QSizePolicy.Maximum, QSizePolicy.Maximum)
-        self.btLoadStreamSetOptions.setIcon(
-            QIcon("./assets/icons/settings.svg"))
-        self.btLoadStreamSetOptions.clicked.connect(
-            self.LoadStreamSetOptionsClicked)
-        hbox.addWidget(self.btLoadStreamSetOptions)
+        self.btLoadStationSet = QPushButton(
+            QApplication.translate("app", "Track sets from a stream or station"))
+        self.btLoadStationSet.setIcon(QIcon("./assets/icons/station.svg"))
+        hbox.addWidget(self.btLoadStationSet)
+        self.btLoadStationSet.clicked.connect(
+            self.signals.StationSelection.emit)
 
         hbox = QHBoxLayout()
         bottomOptions.layout().addLayout(hbox)
 
-        self.btLoadPlayerSet = QPushButton("Load player set")
-        self.btLoadPlayerSet.setIcon(QIcon("./assets/icons/person_search.svg"))
-        self.btLoadPlayerSet.setEnabled(False)
-        self.btLoadPlayerSet.clicked.connect(
-            self.signals.UserSetSelection.emit)
-        hbox.addWidget(self.btLoadPlayerSet)
-        TSHTournamentDataProvider.instance.signals.user_updated.connect(
-            self.UpdateUserSetButton)
-        TSHTournamentDataProvider.instance.signals.tournament_changed.connect(
-            self.UpdateUserSetButton)
+        if self.scoreboardNumber <= 1:
+            self.btLoadPlayerSet = QPushButton("Load player set")
+            self.btLoadPlayerSet.setIcon(
+                QIcon("./assets/icons/person_search.svg"))
+            self.btLoadPlayerSet.setEnabled(False)
+            self.btLoadPlayerSet.clicked.connect(
+                self.signals.UserSetSelection.emit)
+            hbox.addWidget(self.btLoadPlayerSet)
+            TSHTournamentDataProvider.instance.signals.user_updated.connect(
+                self.UpdateUserSetButton)
+            TSHTournamentDataProvider.instance.signals.tournament_changed.connect(
+                self.UpdateUserSetButton)
 
-        self.btLoadPlayerSetOptions = QPushButton()
-        self.btLoadPlayerSetOptions.setSizePolicy(
-            QSizePolicy.Maximum, QSizePolicy.Maximum)
-        self.btLoadPlayerSetOptions.setIcon(
-            QIcon("./assets/icons/settings.svg"))
-        self.btLoadPlayerSetOptions.clicked.connect(
-            self.LoadUserSetOptionsClicked)
-        hbox.addWidget(self.btLoadPlayerSetOptions)
+            self.btLoadPlayerSetOptions = QPushButton()
+            self.btLoadPlayerSetOptions.setSizePolicy(
+                QSizePolicy.Maximum, QSizePolicy.Maximum)
+            self.btLoadPlayerSetOptions.setIcon(
+                QIcon("./assets/icons/settings.svg"))
+            self.btLoadPlayerSetOptions.clicked.connect(
+                self.LoadUserSetOptionsClicked)
+            hbox.addWidget(self.btLoadPlayerSetOptions)
 
         TSHTournamentDataProvider.instance.signals.tournament_changed.connect(
             self.UpdateBottomButtons)
         TSHTournamentDataProvider.instance.signals.tournament_changed.emit()
 
         self.selectSetWindow = TSHSelectSetWindow(self)
+        self.selectStationWindow = TSHSelectStationWindow(self)
 
         self.timerLayout = QWidget()
         self.timerLayout.setLayout(QHBoxLayout())
@@ -276,7 +308,8 @@ class TSHScoreboardWidget(QDockWidget):
         self.timerCancelBt = QPushButton()
         self.timerCancelBt.setIcon(QIcon('assets/icons/cancel.svg'))
         self.timerCancelBt.setIconSize(QSize(12, 12))
-        self.timerCancelBt.clicked.connect(self.StopAutoUpdate)
+        self.timerCancelBt.clicked.connect(
+            lambda: self.StopAutoUpdate(clear_variables=True))
         self.timerLayout.layout().addWidget(self.timerCancelBt)
         self.timerLayout.setVisible(False)
 
@@ -284,6 +317,19 @@ class TSHScoreboardWidget(QDockWidget):
         self.columns.layout().addWidget(self.team1column)
         self.team1column.findChild(QLabel, "teamLabel").setText(
             QApplication.translate("app", "TEAM {0}").format(1))
+
+        DEFAULT_TEAM1_COLOR = 'rgb(254, 54, 54)'
+
+        self.colorButton1 = TSHColorButton(color=DEFAULT_TEAM1_COLOR)
+        # self.colorButton1.setText(QApplication.translate("app", "COLOR"))
+        self.colorButton1.colorChanged.connect(
+            lambda color: [
+                self.CommandTeamColor(0, color)
+            ])
+        self.CommandTeamColor(0, DEFAULT_TEAM1_COLOR)
+
+        self.team1column.findChild(QHBoxLayout, "horizontalLayout_2").layout(
+        ).insertWidget(0, self.colorButton1)
         self.team1column.findChild(QScrollArea).setWidget(QWidget())
         self.team1column.findChild(
             QScrollArea).widget().setLayout(QVBoxLayout())
@@ -292,7 +338,7 @@ class TSHScoreboardWidget(QDockWidget):
             c.editingFinished.connect(
                 lambda element=c: [
                     StateManager.Set(
-                        f"score.team.1.{element.objectName()}", element.text())
+                        f"score.{self.scoreboardNumber}.team.1.{element.objectName()}", element.text())
                 ])
             c.editingFinished.emit()
 
@@ -300,7 +346,7 @@ class TSHScoreboardWidget(QDockWidget):
             c.toggled.connect(
                 lambda state, element=c: [
                     StateManager.Set(
-                        f"score.team.1.{element.objectName()}", state)
+                        f"score.{self.scoreboardNumber}.team.1.{element.objectName()}", state)
                 ])
             c.toggled.emit(False)
 
@@ -311,6 +357,19 @@ class TSHScoreboardWidget(QDockWidget):
         self.columns.layout().addWidget(self.team2column)
         self.team2column.findChild(QLabel, "teamLabel").setText(
             QApplication.translate("app", "TEAM {0}").format(2))
+
+        DEFAULT_TEAM2_COLOR = 'rgb(46, 137, 255)'
+
+        self.colorButton2 = TSHColorButton(color=DEFAULT_TEAM2_COLOR)
+        self.colorButton2.colorChanged.connect(
+            lambda color: [
+                self.CommandTeamColor(1, color)
+            ])
+        # self.colorButton2.setText(QApplication.translate("app", "COLOR"))
+        self.CommandTeamColor(1, DEFAULT_TEAM2_COLOR)
+        self.team2column.findChild(QHBoxLayout, "horizontalLayout_2").layout(
+        ).insertWidget(0, self.colorButton2)
+
         self.team2column.findChild(QScrollArea).setWidget(QWidget())
         self.team2column.findChild(
             QScrollArea).widget().setLayout(QVBoxLayout())
@@ -319,7 +378,7 @@ class TSHScoreboardWidget(QDockWidget):
             c.editingFinished.connect(
                 lambda element=c: [
                     StateManager.Set(
-                        f"score.team.2.{element.objectName()}", element.text())
+                        f"score.{self.scoreboardNumber}.team.2.{element.objectName()}", element.text())
                 ])
             c.editingFinished.emit()
 
@@ -327,13 +386,13 @@ class TSHScoreboardWidget(QDockWidget):
             c.toggled.connect(
                 lambda state, element=c: [
                     StateManager.Set(
-                        f"score.team.2.{element.objectName()}", state)
+                        f"score.{self.scoreboardNumber}.team.2.{element.objectName()}", state)
                 ])
             c.toggled.emit(False)
 
-        StateManager.Unset(f'score.team.1.player')
-        StateManager.Unset(f'score.team.2.player')
-        StateManager.Unset(f'score.stage_strike')
+        StateManager.Unset(f'score.{self.scoreboardNumber}.team.1.player')
+        StateManager.Unset(f'score.{self.scoreboardNumber}.team.2.player')
+        StateManager.Unset(f'score.{self.scoreboardNumber}.stage_strike')
         self.playerNumber.setValue(1)
         self.charNumber.setValue(1)
 
@@ -341,13 +400,13 @@ class TSHScoreboardWidget(QDockWidget):
             c.lineEdit().editingFinished.connect(
                 lambda element=c: [
                     StateManager.Set(
-                        f"score.{element.objectName()}", element.currentText())
+                        f"score.{self.scoreboardNumber}.{element.objectName()}", element.currentText())
                 ]
             )
             c.currentIndexChanged.connect(
                 lambda x, element=c: [
                     StateManager.Set(
-                        f"score.{element.objectName()}", element.currentText())
+                        f"score.{self.scoreboardNumber}.{element.objectName()}", element.currentText())
                 ]
             )
             c.lineEdit().editingFinished.emit()
@@ -355,8 +414,9 @@ class TSHScoreboardWidget(QDockWidget):
 
         self.scoreColumn.findChild(QSpinBox, "best_of").valueChanged.connect(
             lambda value: [
-                StateManager.Set(f"score.best_of", value),
-                StateManager.Set(f"score.best_of_text", TSHLocaleHelper.matchNames.get(
+                StateManager.Set(
+                    f"score.{self.scoreboardNumber}.best_of", value),
+                StateManager.Set(f"score.{self.scoreboardNumber}.best_of_text", TSHLocaleHelper.matchNames.get(
                     "best_of").format(value) if value > 0 else ""),
             ]
         )
@@ -364,14 +424,14 @@ class TSHScoreboardWidget(QDockWidget):
 
         self.scoreColumn.findChild(QSpinBox, "score_left").valueChanged.connect(
             lambda value: StateManager.Set(
-                f"score.team.1.score", value)
+                f"score.{self.scoreboardNumber}.team.1.score", value)
         )
         self.scoreColumn.findChild(
             QSpinBox, "score_left").valueChanged.emit(0)
 
         self.scoreColumn.findChild(QSpinBox, "score_right").valueChanged.connect(
             lambda value: StateManager.Set(
-                f"score.team.2.score", value)
+                f"score.{self.scoreboardNumber}.team.2.score", value)
         )
         self.scoreColumn.findChild(
             QSpinBox, "score_right").valueChanged.emit(0)
@@ -432,10 +492,11 @@ class TSHScoreboardWidget(QDockWidget):
 
     def ExportTeamLogo(self, team, value):
         if os.path.exists(f"./user_data/team_logo/{value.lower()}.png"):
-            StateManager.Set(f"score.team.{team}.logo",
+            StateManager.Set(f"score.{self.scoreboardNumber}.team.{team}.logo",
                              f"./user_data/team_logo/{value.lower()}.png")
         else:
-            StateManager.Set(f"score.team.{team}.logo", None)
+            StateManager.Set(
+                f"score.{self.scoreboardNumber}.team.{team}.logo", None)
 
     def GenerateThumbnail(self):
         msgBox = QMessageBox()
@@ -443,11 +504,13 @@ class TSHScoreboardWidget(QDockWidget):
         msgBox.setWindowTitle(QApplication.translate(
             "thumb_app", "TSH - Thumbnail"))
         try:
-            thumbnailPath = thumbnail.generate(settingsManager=SettingsManager)
+            thumbnailPath = thumbnail.generate(
+                settingsManager=SettingsManager, scoreboardNumber=self.scoreboardNumber)
             msgBox.setText(QApplication.translate(
-                "thumb_app", "The thumbnail has been generated here:") + " ")
-            msgBox.setIcon(QMessageBox.Information)
-            msgBox.setInformativeText(thumbnailPath)
+                "thumb_app", "The thumbnail has been generated here:") + " " + thumbnailPath + "\n\n" + QApplication.translate(
+                "thumb_app", "The video title and description have also been generated."))
+            msgBox.setIcon(QMessageBox.NoIcon)
+            # msgBox.setInformativeText(thumbnailPath)
 
             thumbnail_settings = SettingsManager.Get("thumbnail_config")
             if thumbnail_settings.get("open_explorer"):
@@ -479,8 +542,8 @@ class TSHScoreboardWidget(QDockWidget):
             self.btSelectSet.setText(
                 QApplication.translate("app", "Load set from {0}").format(TSHTournamentDataProvider.instance.provider.url))
             self.btSelectSet.setEnabled(True)
-            self.btLoadStreamSet.setEnabled(True)
-            self.btLoadPlayerSet.setEnabled(True)
+            if self.scoreboardNumber <= 1:
+                self.btLoadPlayerSet.setEnabled(True)
         else:
             self.btSelectSet.setText(
                 QApplication.translate("app", "Load set"))
@@ -493,7 +556,10 @@ class TSHScoreboardWidget(QDockWidget):
     def SetPlayersPerTeam(self, number):
         while len(self.team1playerWidgets) < number:
             p = TSHScoreboardPlayerWidget(
-                index=len(self.team1playerWidgets)+1, teamNumber=1, path=f'score.team.{1}.player.{len(self.team1playerWidgets)+1}')
+                index=len(self.team1playerWidgets)+1,
+                teamNumber=1,
+                path=f'score.{self.scoreboardNumber}.team.{1}.player.{len(self.team1playerWidgets)+1}',
+                scoreboardNumber=self.scoreboardNumber)
             self.playerWidgets.append(p)
 
             self.team1column.findChild(
@@ -504,23 +570,27 @@ class TSHScoreboardWidget(QDockWidget):
 
             index = len(self.team1playerWidgets)
 
-            p.btMoveUp.clicked.connect(lambda x, index=index, p=p: p.SwapWith(
+            p.btMoveUp.clicked.connect(lambda index=index, p=p: p.SwapWith(
                 self.team1playerWidgets[index-1 if index > 0 else 0]))
-            p.btMoveDown.clicked.connect(lambda x, index=index, p=p: p.SwapWith(
+            p.btMoveDown.clicked.connect(lambda index=index, p=p: p.SwapWith(
                 self.team1playerWidgets[index+1 if index < len(self.team1playerWidgets) - 1 else index]))
 
             p.instanceSignals.playerId_changed.connect(
-                TSHStatsUtil.instance.signals.RecentSetsSignal.emit)
+                self.stats.signals.RecentSetsSignal.emit)
             p.instanceSignals.player1Id_changed.connect(
-                TSHStatsUtil.instance.signals.LastSetsP1Signal.emit)
+                self.stats.signals.LastSetsP1Signal.emit)
             p.instanceSignals.player1Id_changed.connect(
-                TSHStatsUtil.instance.signals.PlayerHistoryStandingsP1Signal.emit)
+                self.stats.signals.PlayerHistoryStandingsP1Signal.emit)
 
             self.team1playerWidgets.append(p)
 
             p = TSHScoreboardPlayerWidget(
-                index=len(self.team2playerWidgets)+1, teamNumber=2, path=f'score.team.{2}.player.{len(self.team2playerWidgets)+1}')
+                index=len(self.team2playerWidgets)+1,
+                teamNumber=2,
+                path=f'score.{self.scoreboardNumber}.team.{2}.player.{len(self.team2playerWidgets)+1}',
+                scoreboardNumber=self.scoreboardNumber)
             self.playerWidgets.append(p)
+
             self.team2column.findChild(
                 QScrollArea).widget().layout().addWidget(p)
             p.SetCharactersPerPlayer(self.charNumber.value())
@@ -529,17 +599,17 @@ class TSHScoreboardWidget(QDockWidget):
 
             index = len(self.team2playerWidgets)
 
-            p.btMoveUp.clicked.connect(lambda x, index=index, p=p: p.SwapWith(
+            p.btMoveUp.clicked.connect(lambda index=index, p=p: p.SwapWith(
                 self.team2playerWidgets[index-1 if index > 0 else 0]))
-            p.btMoveDown.clicked.connect(lambda x, index=index, p=p: p.SwapWith(
+            p.btMoveDown.clicked.connect(lambda index=index, p=p: p.SwapWith(
                 self.team2playerWidgets[index+1 if index < len(self.team2playerWidgets) - 1 else index]))
 
             p.instanceSignals.playerId_changed.connect(
-                TSHStatsUtil.instance.signals.RecentSetsSignal.emit)
+                self.stats.signals.RecentSetsSignal.emit)
             p.instanceSignals.player2Id_changed.connect(
-                TSHStatsUtil.instance.signals.LastSetsP2Signal.emit)
+                self.stats.signals.LastSetsP2Signal.emit)
             p.instanceSignals.player2Id_changed.connect(
-                TSHStatsUtil.instance.signals.PlayerHistoryStandingsP2Signal.emit)
+                self.stats.signals.PlayerHistoryStandingsP2Signal.emit)
 
             self.team2playerWidgets.append(p)
 
@@ -559,10 +629,11 @@ class TSHScoreboardWidget(QDockWidget):
             team2player.deleteLater()
 
         for team in [1, 2]:
-            if StateManager.Get(f'score.team.{team}'):
-                for k in list(StateManager.Get(f'score.team.{team}.player').keys()):
+            if StateManager.Get(f'score.{self.scoreboardNumber}.team.{team}'):
+                for k in list(StateManager.Get(f'score.{self.scoreboardNumber}.team.{team}.player').keys()):
                     if int(k) > number:
-                        StateManager.Unset(f'score.team.{team}.player.{k}')
+                        StateManager.Unset(
+                            f'score.{self.scoreboardNumber}.team.{team}.player.{k}')
 
         if number > 1:
             self.team1column.findChild(QLineEdit, "teamName").setVisible(True)
@@ -583,128 +654,180 @@ class TSHScoreboardWidget(QDockWidget):
 
     def SwapTeams(self):
         StateManager.BlockSaving()
-        tmpData = [[], []]
 
-        # Save state
-        for t, team in enumerate([self.team1playerWidgets, self.team2playerWidgets]):
-            for i, p in enumerate(team):
-                data = {}
-                for widget in p.findChildren(QWidget):
-                    if type(widget) == QLineEdit:
-                        data[widget.objectName()] = widget.text()
-                    if type(widget) == QComboBox:
-                        data[widget.objectName()] = widget.currentIndex()
-                data["online_avatar"] = StateManager.Get(
-                    f"score.team.{t+1}.player.{i+1}.online_avatar")
-                data["id"] = StateManager.Get(
-                    f"score.team.{t+1}.player.{i+1}.id")
-                data["seed"] = StateManager.Get(
-                    f"score.team.{t+1}.player.{i+1}.seed")
-                tmpData[t].append(data)
+        # Lock all player widgets
+        for p in self.playerWidgets:
+            p.dataLock.acquire()
 
-        # Load state
-        for t, team in enumerate([self.team2playerWidgets, self.team1playerWidgets]):
-            for i, p in enumerate(tmpData[t]):
-                for objName in tmpData[t][i]:
-                    widget = team[i].findChild(QWidget, objName)
-                    if widget:
-                        if type(widget) == QLineEdit:
-                            widget.setText(tmpData[t][i][objName])
-                            widget.editingFinished.emit()
-                        if type(widget) == QComboBox:
-                            widget.setCurrentIndex(tmpData[t][i][objName])
-                QCoreApplication.processEvents()
-                team[i].ExportPlayerImages(tmpData[t][i]["online_avatar"])
-                team[i].ExportPlayerId(tmpData[t][i]["id"])
-                StateManager.Set(
-                    f"score.team.{len(tmpData[t])-t+1}.player.{i+1}.seed", tmpData[t][i]["seed"])
+        try:
+            for i, p in enumerate(self.team1playerWidgets):
+                p.SwapWith(self.team2playerWidgets[i])
 
-        # Scores
-        scoreLeft = self.scoreColumn.findChild(QSpinBox, "score_left").value()
-        self.scoreColumn.findChild(QSpinBox, "score_left").setValue(
-            self.scoreColumn.findChild(QSpinBox, "score_right").value())
-        self.scoreColumn.findChild(QSpinBox, "score_right").setValue(scoreLeft)
+            # Scores
+            scoreLeft = self.scoreColumn.findChild(
+                QSpinBox, "score_left").value()
+            self.scoreColumn.findChild(QSpinBox, "score_left").setValue(
+                self.scoreColumn.findChild(QSpinBox, "score_right").value())
+            self.scoreColumn.findChild(
+                QSpinBox, "score_right").setValue(scoreLeft)
 
-        # Losers
-        losersLeft = self.team1column.findChild(
-            QCheckBox, "losers").isChecked()
-        self.team1column.findChild(QCheckBox, "losers").setChecked(
-            self.team2column.findChild(QCheckBox, "losers").isChecked())
-        self.team2column.findChild(QCheckBox, "losers").setChecked(losersLeft)
+            # Losers
+            losersLeft = self.team1column.findChild(
+                QCheckBox, "losers").isChecked()
+            self.team1column.findChild(QCheckBox, "losers").setChecked(
+                self.team2column.findChild(QCheckBox, "losers").isChecked())
+            self.team2column.findChild(
+                QCheckBox, "losers").setChecked(losersLeft)
 
-        # Team Names
-        teamNameLeft = self.team1column.findChild(QLineEdit, "teamName").text()
-        self.team1column.findChild(QLineEdit, "teamName").setText(
-            self.team2column.findChild(QLineEdit, "teamName").text())
-        self.team2column.findChild(QLineEdit, "teamName").setText(teamNameLeft)
-        self.team1column.findChild(
-            QLineEdit, "teamName").editingFinished.emit()
-        self.team2column.findChild(
-            QLineEdit, "teamName").editingFinished.emit()
+            # Team Names
+            teamNameLeft = self.team1column.findChild(
+                QLineEdit, "teamName").text()
+            self.team1column.findChild(QLineEdit, "teamName").setText(
+                self.team2column.findChild(QLineEdit, "teamName").text())
+            self.team2column.findChild(
+                QLineEdit, "teamName").setText(teamNameLeft)
+            self.team1column.findChild(
+                QLineEdit, "teamName").editingFinished.emit()
+            self.team2column.findChild(
+                QLineEdit, "teamName").editingFinished.emit()
 
-        self.teamsSwapped = not self.teamsSwapped
+            self.teamsSwapped = not self.teamsSwapped
 
-        StateManager.Set(f"score.teamsSwapped", self.teamsSwapped)
+        finally:
+            StateManager.Set(
+                f"score.{self.scoreboardNumber}.teamsSwapped", self.teamsSwapped)
 
-        StateManager.ReleaseSaving()
+            for p in self.playerWidgets:
+                p.dataLock.release()
+
+            StateManager.ReleaseSaving()
 
     def ResetScore(self):
         self.scoreColumn.findChild(QSpinBox, "score_left").setValue(0)
         self.scoreColumn.findChild(QSpinBox, "score_right").setValue(0)
 
+    def AutoUpdate(self, data):
+        TSHTournamentDataProvider.instance.GetMatch(
+            self, data.get("id"), overwrite=False)
+        TSHTournamentDataProvider.instance.GetStreamQueue()
+
+    def StationSetsLoaded(self, data):
+        # Ici peut être lancer le chargement des sets voire même trigger un autre signal ?
+
+        logger.info("STATION SETS LOADED -----------------------------")
+        logger.info(data)
+        StateManager.BlockSaving()
+
+        StateManager.Set(f"score.{self.scoreboardNumber}.station_queue", data)
+
+        StateManager.ReleaseSaving()
+
     def NewSetSelected(self, data):
-        self.StopAutoUpdate()
-        self.autoUpdateTimer = QTimer()
-        self.autoUpdateTimer.start(5000)
-        self.timeLeftTimer = QTimer()
-        self.timeLeftTimer.start(100)
-        self.timeLeftTimer.timeout.connect(self.UpdateTimeLeftTimer)
-        self.timerLayout.setVisible(True)
+        if not SettingsManager.Get("general.disable_autoupdate", False):
+            self.StopAutoUpdate()
+            self.autoUpdateTimer = QTimer()
+            self.autoUpdateTimer.start(5000)
+            self.timeLeftTimer = QTimer()
+            self.timeLeftTimer.start(100)
+            self.timeLeftTimer.timeout.connect(self.UpdateTimeLeftTimer)
+            self.timerLayout.setVisible(True)
 
-        if data.get("auto_update") == "set":
-            self.labelAutoUpdate.setText("Auto update (Set)")
-        elif data.get("auto_update") == "stream":
-            self.labelAutoUpdate.setText("Auto update (Stream)")
-        elif data.get("auto_update") == "user":
-            self.labelAutoUpdate.setText("Auto update (User)")
-        else:
-            self.labelAutoUpdate.setText("Auto update")
+            if data.get("auto_update") == "set":
+                self.labelAutoUpdate.setText("Auto update (Set)")
+            elif data.get("auto_update") == "stream":
+                self.labelAutoUpdate.setText(
+                    f"Auto update (Stream [{self.lastStationSelected.get('identifier')}])")
+            elif data.get("auto_update") == "station":
+                self.labelAutoUpdate.setText(
+                    f"Auto update (Station [{self.lastStationSelected.get('identifier')}])")
+            elif data.get("auto_update") == "user":
+                self.labelAutoUpdate.setText("Auto update (User)")
+            else:
+                self.labelAutoUpdate.setText("Auto update")
 
-        if data.get("id") != None and data.get("id") != self.lastSetSelected:
-            StateManager.Unset(f'score.stage_strike')
-            self.lastSetSelected = data.get("id")
-            self.ClearScore()
+        # Lock all player widgets
+        for p in self.playerWidgets:
+            p.dataLock.acquire()
+        StateManager.BlockSaving()
 
-            # Force user to be P1 on set change
-            if data.get("auto_update") == "user":
-                if data.get("reverse") and not self.teamsSwapped:
-                    self.SwapTeams()
-                elif not data.get("reverse") and self.teamsSwapped:
-                    self.SwapTeams()
-
-            TSHTournamentDataProvider.instance.GetMatch(
-                self, data["id"], overwrite=True)
+        try:
             TSHTournamentDataProvider.instance.GetStreamQueue()
 
-        self.autoUpdateTimer.timeout.connect(
-            lambda setId=data: TSHTournamentDataProvider.instance.GetMatch(self, data.get("id"), overwrite=False))
+            if data.get("id") != None and data.get("id") != self.lastSetSelected:
+                # Clear previous scores
+                # Important because when we receive scores as 0 we don't update based on that
+                # Otherwise an offline set which is only updated after it's complete would reset the score
+                # all the time since it would be 0-0 until then
+                self.CommandClearAll(no_mains=data.get(
+                    "no_mains") if data.get("no_mains") != None else False)
+                self.ClearScore()
 
-        if data.get("auto_update") == "stream":
-            self.autoUpdateTimer.timeout.connect(
-                lambda setId=data: TSHTournamentDataProvider.instance.LoadStreamSet(self, SettingsManager.Get("twitch_username")))
+                # A new set was loaded
+                self.lastSetSelected = data.get("id")
 
-        if data.get("auto_update") == "user":
-            self.autoUpdateTimer.timeout.connect(
-                lambda setId=data: TSHTournamentDataProvider.instance.LoadUserSet(
-                    self, SettingsManager.Get(TSHTournamentDataProvider.instance.provider.name+"_user")))
+                # Clear stage strike data
+                StateManager.Unset(
+                    f'score.{self.scoreboardNumber}.stage_strike')
 
-    def StopAutoUpdate(self):
+                # Add general set data to object: id, auto update type, station/stream identifier, etc
+                StateManager.Set(
+                    f'score.{self.scoreboardNumber}.set_id', data.get("id"))
+
+                StateManager.Set(
+                    f'score.{self.scoreboardNumber}.auto_update', data.get("auto_update"))
+
+                if self.lastStationSelected:
+                    StateManager.Set(
+                        f'score.{self.scoreboardNumber}.station', self.lastStationSelected.get('identifier'))
+                else:
+                    StateManager.Set(
+                        f'score.{self.scoreboardNumber}.station', None)
+
+                # Force user to be P1 on set change
+                if data.get("auto_update") == "user":
+                    if (data.get("reverse") and not self.teamsSwapped) or \
+                            not data.get("reverse") and self.teamsSwapped:
+                        self.teamsSwapped = not self.teamsSwapped
+                        StateManager.Set(
+                            f"score.{self.scoreboardNumber}.teamsSwapped", self.teamsSwapped)
+
+                TSHTournamentDataProvider.instance.GetMatch(
+                    self, data["id"], overwrite=True, no_mains=data.get("no_mains") if data.get("no_mains") != None else False)
+
+            if not SettingsManager.Get("general.disable_autoupdate", False):
+                self.autoUpdateTimer.timeout.connect(
+                    lambda setId=data: self.AutoUpdate(data))
+
+                if data.get("auto_update") in ("stream", "station"):
+                    self.autoUpdateTimer.timeout.connect(
+                        lambda setId=data: TSHTournamentDataProvider.instance.LoadStationSets(self))
+
+                if data.get("auto_update") == "user":
+                    self.autoUpdateTimer.timeout.connect(
+                        lambda setId=data: TSHTournamentDataProvider.instance.LoadUserSet(
+                            self, SettingsManager.Get(TSHTournamentDataProvider.instance.provider.name+"_user")))
+        finally:
+            for p in self.playerWidgets:
+                p.dataLock.release()
+            StateManager.ReleaseSaving()
+
+    def StopAutoUpdate(self, clear_variables=False):
         if self.autoUpdateTimer != None:
             self.autoUpdateTimer.stop()
             self.autoUpdateTimer = None
         if self.timeLeftTimer != None:
             self.timeLeftTimer.stop()
             self.timeLeftTimer = None
+
+        if clear_variables:
+            self.lastSetSelected = None
+            self.lastStationSelected = None
+
+            StateManager.Set(
+                f'score.{self.scoreboardNumber}.auto_update', None)
+            StateManager.Set(f'score.{self.scoreboardNumber}.set_id', None)
+            StateManager.Set(f'score.{self.scoreboardNumber}.station', None)
+
         self.timerLayout.setVisible(False)
 
     def UpdateTimeLeftTimer(self):
@@ -716,25 +839,14 @@ class TSHScoreboardWidget(QDockWidget):
         self.selectSetWindow.LoadSets()
         self.selectSetWindow.show()
 
-    def LoadStreamSetClicked(self):
+    def LoadStationSets(self, station):
         self.lastSetSelected = None
-        TSHTournamentDataProvider.instance.LoadStreamSet(
-            self, SettingsManager.Get("twitch_username"))
+        self.lastStationSelected = station
+        TSHTournamentDataProvider.instance.LoadStationSets(self)
 
-    def LoadStreamSetOptionsClicked(self):
-        TSHTournamentDataProvider.instance.SetTwitchUsername(self)
-
-    def UpdateStreamButton(self):
-        if SettingsManager.Get("twitch_username"):
-            self.btLoadStreamSet.setText(
-                QApplication.translate("app",  "Load current stream set") + " "+QApplication.translate("punctuation", "(")+SettingsManager.Get("twitch_username")+QApplication.translate("punctuation", ")"))
-            self.btLoadStreamSet.setEnabled(True)
-            StateManager.Set(f"currentStream",
-                             SettingsManager.Get("twitch_username"))
-        else:
-            self.btLoadStreamSet.setText(
-                QApplication.translate("app", "Load current stream set"))
-            self.btLoadStreamSet.setEnabled(False)
+    def LoadStationSetClicked(self):
+        self.selectStationWindow.LoadStations()
+        self.selectStationWindow.show()
 
     def UpdateUserSetButton(self):
         provider = None
@@ -772,6 +884,12 @@ class TSHScoreboardWidget(QDockWidget):
             scoreContainers[team].setValue(
                 scoreContainers[team].value()+change)
 
+    def CommandClearAll(self, no_mains=False):
+        for t, team in enumerate([self.team1playerWidgets, self.team2playerWidgets]):
+            for i, p in enumerate(team):
+                p.Clear(no_mains)
+        self.lastSetSelected = None
+
     def ClearScore(self):
         for c in self.scoreColumn.findChildren(QComboBox):
             c.setCurrentText("")
@@ -783,94 +901,181 @@ class TSHScoreboardWidget(QDockWidget):
         self.team1column.findChild(QCheckBox, "losers").setChecked(False)
         self.team2column.findChild(QCheckBox, "losers").setChecked(False)
 
-    def UpdateSetData(self, data):
-        # If you switched sets and it was still finishing an async update call
-        # Avoid loading data from the previous set
-        if data.get("id") != None and data.get("id") != self.lastSetSelected:
-            return
+    def CommandTeamColor(self, team: int, color):
+        if team == 0:
+            self.colorButton1.setColor(color)
+        if team == 1:
+            self.colorButton2.setColor(color)
+        if team in (0, 1):
+            StateManager.BlockSaving()
+            StateManager.Set(
+                f"score.{self.scoreboardNumber}.team.{team + 1}.color", color)
+            StateManager.ReleaseSaving()
 
+    # Modifies the current set data. Does not check for id, so do not call this with data that may lead to another hbox incident
+    def ChangeSetData(self, data):
         StateManager.BlockSaving()
 
-        if data.get("round_name"):
-            self.scoreColumn.findChild(
-                QComboBox, "match").setCurrentText(data.get("round_name"))
-            self.scoreColumn.findChild(
-                QComboBox, "match").lineEdit().editingFinished.emit()
+        try:
+            if data.get("round_name"):
+                self.scoreColumn.findChild(
+                    QComboBox, "match").setCurrentText(data.get("round_name"))
+                self.scoreColumn.findChild(
+                    QComboBox, "match").lineEdit().editingFinished.emit()
 
-        if data.get("tournament_phase"):
-            self.scoreColumn.findChild(
-                QComboBox, "phase").setCurrentText(data.get("tournament_phase"))
-            self.scoreColumn.findChild(
-                QComboBox, "phase").lineEdit().editingFinished.emit()
+            if data.get("tournament_phase"):
+                phase = data.get("tournament_phase")
+                top_n = data.get("top_n", 0)
 
-        scoreContainers = [
-            self.scoreColumn.findChild(QSpinBox, "score_left"),
-            self.scoreColumn.findChild(QSpinBox, "score_right")
-        ]
+                # Is this Top 16 - Top ??? (even 128), if so...
+                # check if this isn't pools and isn't a qualifier
+                if top_n > 12 and data.get("isPools", False) is False and data.get("winnerProgression", None) is None:
+                    phase = TSHLocaleHelper.phaseNames.get(
+                        "top_n", "Top {0}").format(top_n)
+
+                self.scoreColumn.findChild(
+                    QComboBox, "phase").setCurrentText(phase)
+                self.scoreColumn.findChild(
+                    QComboBox, "phase").lineEdit().editingFinished.emit()
+
+            scoreContainers = [
+                self.scoreColumn.findChild(QSpinBox, "score_left"),
+                self.scoreColumn.findChild(QSpinBox, "score_right")
+            ]
+            if self.teamsSwapped:
+                scoreContainers.reverse()
+
+            if data.get("reset_score"):
+                scoreContainers[0].setValue(0)
+                scoreContainers[1].setValue(0)
+
+            if data.get("team1score"):
+                scoreContainers[0].setValue(data.get("team1score"))
+            if data.get("team2score"):
+                scoreContainers[1].setValue(data.get("team2score"))
+            if data.get("bestOf"):
+                self.scoreColumn.findChild(
+                    QSpinBox, "best_of").setValue(data.get("bestOf"))
+
+            losersContainers = [
+                self.team1column.findChild(QCheckBox, "losers"),
+                self.team2column.findChild(QCheckBox, "losers")
+            ]
+            if self.teamsSwapped:
+                losersContainers.reverse()
+
+            if data.get("team1losers") is not None:
+                losersContainers[0].setChecked(data.get("team1losers"))
+            if data.get("team2losers") is not None:
+                losersContainers[1].setChecked(data.get("team2losers"))
+
+            if data.get("entrants"):
+                self.playerNumber.setValue(
+                    len(max(data.get("entrants"), key=lambda x: len(x))))
+
+                # Lock all player widgets
+                for p in self.playerWidgets:
+                    p.dataLock.acquire()
+
+                try:
+                    for t, team in enumerate(data.get("entrants")):
+                        teamInstances = [self.team1playerWidgets,
+                                         self.team2playerWidgets]
+                        if self.teamsSwapped:
+                            teamInstances.reverse()
+                        teamInstance = teamInstances[t]
+
+                        if len(team) > 1:
+                            teamColumns = [self.team1column, self.team2column]
+                            teamNames = [
+                                data.get("p1_name"), data.get("p2_name")]
+                            if self.teamsSwapped:
+                                teamNames.reverse()
+                            teamColumns[t].findChild(
+                                QLineEdit, "teamName").setText(teamNames[t])
+                            teamColumns[t].findChild(
+                                QLineEdit, "teamName").editingFinished.emit()
+
+                        for p, player in enumerate(team):
+                            if data.get("overwrite"):
+                                teamInstance[p].SetData(player, False, True, data.get(
+                                    "no_mains") if data.get("no_mains") != None else False)
+                            if data.get("has_selection_data") and data.get("no_mains") != True:
+                                player = {
+                                    "mains": player.get("mains")
+                                }
+                                teamInstance[p].SetData(player, True, False)
+                finally:
+                    for p in self.playerWidgets:
+                        p.dataLock.release()
+            else:
+                try:
+                    # Lock all player widgets
+                    for p in self.playerWidgets:
+                        p.dataLock.acquire()
+
+                    if not data.get("team") or not data.get("player"):
+                        return
+
+                    team = int(data.get("team"))-1
+                    player = int(data.get("player"))-1
+
+                    teamInstances = [self.team1playerWidgets,
+                                     self.team2playerWidgets]
+                    teamInstance = teamInstances[team]
+
+                    teamInstance[player].SetData(
+                        data.get("data"), False, False)
+                finally:
+                    for p in self.playerWidgets:
+                        p.dataLock.release()
+
+            if data.get("stage_strike"):
+                StateManager.Set(f"score.{self.scoreboardNumber}.stage_strike",
+                                 data.get("stage_strike"))
+                StateManager.Set(f"score.ruleset", data.get("ruleset"))
+
+            if data.get("bracket_type"):
+                StateManager.Set(f"score.bracket_type",
+                                 data.get("bracket_type"))
+                self.stats.signals.UpsetFactorCalculation.emit()
+
+            if data.get("top_n"):
+                StateManager.Set(
+                    f"score.{self.scoreboardNumber}.top_n", data.get("top_n"))
+        finally:
+            StateManager.ReleaseSaving()
+
+    def UpdateSetData(self, data):
+        # Do not update the scoreboard on empty data
+        if data is None or len(data) == 0 or data.get("id") == None:
+            return
+
+        # If you switched sets and it was still finishing an async update call
+        # Avoid loading data from the previous set
+        if str(data.get("id")) != str(self.lastSetSelected):
+            return
+
+        if SettingsManager.Get("general.disable_overwrite", False):
+            for entrant in data.get("entrants"):
+                if (entrant[0].get("gamerTag") in TSHPlayerDB.database):
+                    entrant[0] = entrant[0] | TSHPlayerDB.database[entrant[0].get(
+                        "gamerTag")]
+
+        self.ChangeSetData(data)
+
+    def LoadPlayerFromTag(self, tag, team, player, no_mains=False):
+        team = int(team)-1
+        player = int(player)-1
+        teamInstances = [self.team1playerWidgets,
+                         self.team2playerWidgets]
+
         if self.teamsSwapped:
-            scoreContainers.reverse()
-
-        if data.get("reset_score"):
-            scoreContainers[0].setValue(0)
-            scoreContainers[1].setValue(0)
-
-        if data.get("team1score"):
-            scoreContainers[0].setValue(data.get("team1score"))
-        if data.get("team2score"):
-            scoreContainers[1].setValue(data.get("team2score"))
-        if data.get("bestOf"):
-            self.scoreColumn.findChild(
-                QSpinBox, "best_of").setValue(data.get("bestOf"))
-
-        losersContainers = [
-            self.team1column.findChild(QCheckBox, "losers"),
-            self.team2column.findChild(QCheckBox, "losers")
-        ]
-        if self.teamsSwapped:
-            losersContainers.reverse()
-
-        if data.get("team1losers") is not None:
-            losersContainers[0].setChecked(data.get("team1losers"))
-        if data.get("team2losers") is not None:
-            losersContainers[1].setChecked(data.get("team2losers"))
-
-        if data.get("entrants"):
-            self.playerNumber.setValue(
-                len(max(data.get("entrants"), key=lambda x: len(x))))
-
-            for t, team in enumerate(data.get("entrants")):
-                teamInstances = [self.team1playerWidgets,
-                                 self.team2playerWidgets]
-                if self.teamsSwapped:
-                    teamInstances.reverse()
-                teamInstance = teamInstances[t]
-
-                if len(team) > 1:
-                    teamColumns = [self.team1column, self.team2column]
-                    teamNames = [data.get("p1_name"), data.get("p2_name")]
-                    teamColumns[t].findChild(
-                        QLineEdit, "teamName").setText(teamNames[t])
-                    teamColumns[t].findChild(
-                        QLineEdit, "teamName").editingFinished.emit()
-
-                for p, player in enumerate(team):
-                    if data.get("overwrite"):
-                        teamInstance[p].SetData(
-                            player, False, True)
-
-                    if data.get("has_selection_data"):
-                        player = {
-                            "mains": player.get("mains")
-                        }
-                        teamInstance[p].SetData(
-                            player, True, False)
-
-        if data.get("stage_strike"):
-            StateManager.Set(f"score.stage_strike", data.get("stage_strike"))
-            StateManager.Set(f"score.ruleset", data.get("ruleset"))
-
-        if data.get("bracket_type"):
-            StateManager.Set(f"score.bracket_type", data.get("bracket_type"))
-            TSHStatsUtil.instance.signals.UpsetFactorCalculation.emit()
-
-        StateManager.ReleaseSaving()
+            teamInstances.reverse()
+        for player_db in TSHPlayerDB.database.values():
+            if tag.lower() == player_db.get("gamerTag").lower():
+                teamInstances[team][player].SetData(
+                    player_db, False, True, no_mains)
+                return True
+        else:
+            return False

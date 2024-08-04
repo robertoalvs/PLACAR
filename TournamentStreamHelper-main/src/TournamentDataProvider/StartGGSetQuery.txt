@@ -11,10 +11,13 @@ query SetQuery($id: ID!) {
         fullRoundText
         state
         totalGames
+        entrant1Score
+        entrant2Score
         slots {
             entrant {
                 id
                 name
+                initialSeedNum
                 participants {
                     id
                     user {
@@ -78,6 +81,9 @@ query SetQuery($id: ID!) {
                 name
                 groupCount
                 bracketType
+                progressionsOut {
+                    id
+                }
             }
             displayIdentifier
         }

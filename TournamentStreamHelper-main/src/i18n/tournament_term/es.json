@@ -11,7 +11,8 @@
         "winners_round": "Ronda {0}",
         "losers_round": "Repesca Ronda {0}",
         "round": "Ronda {0}",
-        "best_of": "Mejor de {0}"
+        "best_of": "Mejor de {0}",
+        "qualifier": "Clasificatoria para {0}"
     },
     "phase": {
         "group_stage": "Fase de Grupos",
@@ -27,6 +28,7 @@
         "top_8": "Top 8",
         "top_16": "Top 16",
         "top_32": "Top 32",
+        "top_n": "Top {0}",
         "exhibition": "Exibición",
         "freeplay": "Amistoso",
         "money_match": "Partido Apostado"

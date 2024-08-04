@@ -15,6 +15,7 @@ assets/log_error.txt
 layout_backup*
 layout_custom*
 .idea/
+.DS_Store
 
 TSH.cflags
 
@@ -53,3 +54,8 @@ layout_*/*
 build/main/*
 TSH_old.exe
 main.spec
+*.tmp
+logs/*
+Pipfile*
+env
+desktop.ini

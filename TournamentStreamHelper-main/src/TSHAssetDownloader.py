@@ -1,7 +1,7 @@
 import traceback
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import *
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
+from qtpy.QtCore import *
 
 from src.TSHGameAssetManager import TSHGameAssetManager
 from src.Workers import Worker
@@ -10,8 +10,9 @@ import requests
 import shutil
 import py7zr
 import urllib
-import json
+import orjson
 import os
+from loguru import logger
 
 
 class IconDelegate(QStyledItemDelegate):
@@ -21,7 +22,7 @@ class IconDelegate(QStyledItemDelegate):
 
 
 class TSHAssetDownloaderSignals(QObject):
-    AssetUpdates = pyqtSignal(dict)
+    AssetUpdates = Signal(dict)
 
 
 class TSHAssetDownloader(QObject):
@@ -61,7 +62,7 @@ class TSHAssetDownloader(QObject):
                     TSHAssetDownloader.instance.signals.AssetUpdates.emit(
                         updates)
                 except:
-                    print(traceback.format_exc())
+                    logger.error(traceback.format_exc())
 
         thread = AssetUpdatesThread(self)
         thread.start()
@@ -83,6 +84,7 @@ class TSHAssetDownloader(QObject):
 
         self.select = QComboBox()
         selectProxy = QSortFilterProxyModel()
+        selectProxy.setSortCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         selectProxy.setSourceModel(self.select.model())
         self.select.model().setParent(selectProxy)
         selectProxy.setSortCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
@@ -90,6 +92,10 @@ class TSHAssetDownloader(QObject):
         self.select.setEditable(True)
         self.select.completer().setFilterMode(Qt.MatchFlag.MatchContains)
         self.select.completer().setCompletionMode(QCompleter.PopupCompletion)
+        self.font_small = QFont(
+            "./assets/font/RobotoCondensed.ttf", pointSize=8)
+        self.select.setFont(self.font_small)
+        self.select.setModel(QStandardItemModel())
         self.preDownloadDialogue.layout().addWidget(self.select)
 
         self.select.setIconSize(QSize(64, 64))
@@ -318,7 +324,7 @@ class TSHAssetDownloader(QObject):
         try:
             response = requests.get(
                 "https://raw.githubusercontent.com/joaorb64/StreamHelperAssets/main/assets.json")
-            assets = json.loads(response.text)
+            assets = orjson.loads(response.text)
         except Exception as e:
             messagebox = QMessageBox()
             messagebox.setText(QApplication.translate(
@@ -326,14 +332,14 @@ class TSHAssetDownloader(QObject):
             messagebox.exec()
         return assets
 
-    def DownloadGameIcon(self, game_code, index, progress_callback):
+    def DownloadGameIcon(self, game_code, index, progress_callback, cancel_event):
         try:
             response = urllib.request.urlopen(
                 f"https://raw.githubusercontent.com/joaorb64/StreamHelperAssets/main/games/{game_code}/base_files/logo.png")
             data = response.read()
             return ([index, data])
         except Exception as e:
-            print(traceback.format_exc())
+            logger.error(traceback.format_exc())
             return (None)
 
     def DownloadGameIconComplete(self, result):
@@ -347,19 +353,19 @@ class TSHAssetDownloader(QObject):
                     if self.select.model().index(i, 0).data(Qt.ItemDataRole.UserRole) == result[0]:
                         self.select.setItemIcon(i, QIcon(pix))
         except Exception as e:
-            print(traceback.format_exc())
+            logger.error(traceback.format_exc())
             return (None)
 
-    def DownloadAssetsWorker(self, files, progress_callback):
+    def DownloadAssetsWorker(self, files, progress_callback, cancel_event):
         totalSize = sum(sum(f["size"] for f in fileList) for fileList in files)
         downloaded = 0
 
-        print("Files to download:", files)
+        logger.info("Files to download:" + str(files))
 
         for i, fileList in enumerate(files):
             for f in fileList:
                 with open("user_data/games/"+f["name"], 'wb') as downloadFile:
-                    print("Downloading "+f["name"])
+                    logger.info("Downloading "+f["name"])
                     progress_callback.emit(QApplication.translate(
                         "app", "Downloading {0}... ({1}/{2})").format(f["name"], i+1, len(files)))
 
@@ -381,7 +387,7 @@ class TSHAssetDownloader(QObject):
                             min(int(downloaded/totalSize*100), 99))
                     downloadFile.close()
 
-                    print("Download OK")
+                    logger.info("Download OK")
 
             is7z = ".7z" in fileList[0]["name"]
 
@@ -411,11 +417,11 @@ class TSHAssetDownloader(QObject):
                     shutil.move("./user_data/games/" +
                                 f["name"], f["extractpath"])
 
-            print("Extract OK")
+            logger.info("Extract OK")
 
         progress_callback.emit(100)
 
-        print("All OK")
+        logger.info("All OK")
 
     def DownloadAssetsProgress(self, n):
         if type(n) == int:
@@ -443,8 +449,7 @@ class TSHAssetDownloader(QObject):
                 for asset in _assets:
                     filesToDownload = list(asset["files"].values())
                     for fileToDownload in filesToDownload:
-                        fileToDownload[
-                            "path"] = f'https://github.com/joaorb64/StreamHelperAssets/releases/latest/download/{fileToDownload["name"]}'
+                        fileToDownload["path"] = f'https://github.com/joaorb64/StreamHelperAssets/releases/latest/download/{fileToDownload["name"]}'
                         fileToDownload["extractpath"] = f'./user_data/games/{game}'
                     allFilesToDownload.append(filesToDownload)
 

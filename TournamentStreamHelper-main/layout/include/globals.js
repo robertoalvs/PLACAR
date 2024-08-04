@@ -27,11 +27,12 @@ async function UpdateWrapper(event) {
   // If initialization wasn't done yet, call Start()
   // We use gsap.globalTimeline.timeScale as 0 for animation to not play before this
   if (gsap.globalTimeline.timeScale() == 0) {
+    gsap.globalTimeline.timeScale(1);
     window.requestAnimationFrame(() => {
       $(document).waitForImages(() => {
         $("body").fadeTo(1, 1, () => {
+          console.log("Start()")
           Start();
-          gsap.globalTimeline.timeScale(1);
         });
       });
     });
@@ -45,15 +46,87 @@ async function UpdateData() {
   try {
     oldData = data;
     data = await getData();
+
+    if(data.timestamp <= oldData.timestamp){
+      return
+    }
+
     let event = new CustomEvent("tsh_update");
     event.data = data;
     event.oldData = oldData;
 
-    if (JSON.stringify(data) != JSON.stringify(oldData)) {
+    console.log(data);
+    document.dispatchEvent(event);
+  } catch (e) {
+    console.log(e);
+  }
+}
+
+// Gets current program state using SocketIO,
+// Dispatch "tsh_update" event if data has changed
+// This function is called in a high frequency.
+// Similar to UpdateData() except for SocketIO support
+// which requires being on HTTP/HTTPS
+async function UpdateData_SocketIO() {
+  try {
+    // Connect to Socket.io. Valid: websocket, webtransport, polling
+    // Python threading with Qt is weird so put in polling method if
+    // really absolutely necessary.
+    const socket = io(window.location.protocol + '//' + window.location.host + '/', {
+      transports: ['websocket', 'webtransport'],
+      timeout: 500,
+      reconnectionDelay: 500,
+      reconnectionDelayMax: 1500
+    });
+
+    socket.on('connect', () => {
+      console.log('socket.io connected');
+    });
+
+    socket.on('disconnect', () => {
+      // call program_state.json initially in case it's a
+      // websocket issue and not with web server being gone
+      // e.g. TSH being closed
+      console.log('socket.io disconnected');
+      UpdateData();
+    });
+
+    socket.io.on('reconnect', () => {
+      console.log('socket.io reconnected');
+    });
+
+    socket.io.on('reconnect_attempt', (attempt_number) => {
+      // every 1-2 seconds, it will attempt to reconnect to
+      // the websocket. before that happens, call UpdateData
+      // in case it's an issue with the websocket and not
+      // with the web server being gone
+      UpdateData();
+    });
+
+    socket.io.on('reconnect_failed', () => {
+      // reconnect_failed, if max retries are reached,
+      // will fall back to file loading program_state.json
+      setInterval(async () => {
+        await UpdateData();
+      }, 64);
+    });
+
+    socket.on('error', (err) => {
+      console.log(err);
+    });
+
+    socket.on('program_state', (newData) => {
+      oldData = data;
+      data = newData;
+
+      let event = new CustomEvent("tsh_update");
+      event.data = data;
+      event.oldData = oldData;
+
       console.log(data);
       document.dispatchEvent(event);
-    }
-  } catch (e) {
+    });
+  } catch(e) {
     console.log(e);
   }
 }
@@ -63,7 +136,7 @@ async function UpdateData() {
 async function LoadEverything() {
   let libPath = "../include/";
   let scripts = [
-    "jquery-3.6.0.min.js",
+    "jquery-3.7.1.min.js",
     "gsap.min.js",
     "he.js",
     "lodash.min.js",
@@ -72,7 +145,20 @@ async function LoadEverything() {
     "jquery.waitforimages.min.js",
     "color-thief.min.js",
     "assetUtils.js",
+    "socket.io.min.js",
   ];
+
+  let urlParams = new URLSearchParams(window.location.search);
+  window.scoreboardNumber = 1;
+  
+  /*
+    Read URL params (<url>?var=val&var2=val2...)
+    Options:
+      scoreboardNumber
+  */
+  for(let [k, v] of urlParams.entries()){
+    window[k] = v;
+  }
 
   for (let i = 0; i < scripts.length; i += 1) {
     const script = scripts[i];
@@ -107,15 +193,25 @@ async function InitAll() {
 
   await LoadKuroshiro();
 
-  setInterval(async () => {
-    await UpdateData();
-  }, 64);
+  if(window.location.protocol === 'file:' || window.location.host === 'absolute') {
+    setInterval(async () => {
+      await UpdateData();
+    }, 64);
+  } else {
+    // Call program_state.json load just in case it takes
+    // a bit to start the websocket
+    await UpdateData_SocketIO();
+  }
 
-  console.log("== Init complete ==");
-  document.dispatchEvent(new CustomEvent("tsh_init"));
+  // await UpdateData();
 
-  document.addEventListener("tsh_update", UpdateWrapper);
-  gsap.globalTimeline.timeScale(0);
+  $(document).ready(()=>{
+    console.log("== Init complete ==");
+    document.dispatchEvent(new CustomEvent("tsh_init"));
+  
+    document.addEventListener("tsh_update", UpdateWrapper);
+    gsap.globalTimeline.timeScale(0);
+  })
 }
 
 // Read program_state.json
@@ -237,72 +333,72 @@ async function Transcript(text) {
 // Sequence: runs anim_out > changes content > runs anim_in
 // Uses FitText to scale div contents to fit
 async function SetInnerHtml(element, html, settings = {}) {
-  let force = undefined;
-  let fadeTime = 0.5;
-  let middleFunction = undefined;
+  // Extract settings
+  let { force, fadeTime = 0.5, middleFunction } = settings;
 
   if (element == null) return;
-  if (force == false) return;
+  if (force === false) return;
 
   // Fade out/in animations
-  let anim_in = { autoAlpha: 1, duration: fadeTime, stagger: 0.1 };
+  let anim_in = { autoAlpha: 1, duration: fadeTime, stagger: 0.1, ...settings.anim_in };
+  let anim_out = { autoAlpha: 0, duration: fadeTime, stagger: 0.1, overwrite: true, ...settings.anim_out };
 
-  if (settings.anim_in) {
-    anim_in = settings.anim_in;
-  }
-
-  let anim_out = { autoAlpha: 0, duration: fadeTime, stagger: 0.1 };
-
-  if (settings.anim_out) {
-    anim_out = settings.anim_out;
-  }
-
-  anim_out.overwrite = true;
-
-  if (html == null || html == undefined) html = "";
+  if (html == null || html === undefined) html = "";
 
   html = String(html);
 
-  let firstRun = false;
+  let firstRun = element.find(".text").length === 0;
 
-  // First run, no need of smooth fade out
-  if (element.find(".text").length == 0) {
+  // First run, no need for smooth fade out
+  if (firstRun) {
     // Put any text inside the div just so the font loading is triggered
     element.html("<div class='text' style='opacity: 0;'>&nbsp;</div>");
-    firstRun = true;
+    force = true;
   }
 
   // Wait for font to load before calculating sizes
-  document.fonts.ready.then(() => {
-    if (
-      force == true ||
-      he.decode(String(element.find(".text").html()).replace(/'/g, '"')) !=
-        he.decode(String(html).replace(/'/g, '"'))
-    ) {
-      const callback = () => {
-        element.find(".text").html(html);
-        if (html.length == 0) {
-          element.find(".text").addClass("text_empty");
-        } else {
-          element.find(".text").removeClass("text_empty");
-        }
-        FitText(element);
-        if (middleFunction != undefined) {
-          middleFunction();
-        }
-        $(element).ready((e) => {
-          gsap.fromTo(element.find(".text"), anim_out, anim_in);
-        });
-      };
+  await document.fonts.ready;
 
-      if (!firstRun) {
-        gsap.to(element.find(".text"), anim_out).then(() => callback());
+  // Decode the HTML content to compare
+  const currentText = he.decode(String(element.find(".text").html()).replace(/'/g, '"'));
+  const newText = he.decode(String(html).replace(/'/g, '"'));
+
+  if (force === true || currentText !== newText) {
+    const updateElement = (element, html, firstRun) => {
+      element.find(".text").html(html);
+
+      if (html.trim().length === 0) {
+        element.find(".text").addClass("text_empty");
+        element.addClass("text_empty");
       } else {
-        gsap.set(element.find(".text"), anim_out).then(() => callback());
+        element.find(".text").removeClass("text_empty");
+        element.removeClass("text_empty");
       }
+
+      FitText(element);
+
+      if (middleFunction) {
+        middleFunction();
+      }
+
+      if (firstRun) {
+        gsap.set(element.find(".text"), anim_in);
+      } else {
+        anim_out.onComplete = null;
+        gsap.fromTo(element.find(".text"), anim_out, anim_in);
+      }
+    };
+
+    if (!firstRun) {
+      anim_out.onComplete = ()=>updateElement(element, html, firstRun)
+      await gsap.to(element.find(".text"), anim_out);
+    } else {
+      anim_out.onComplete = ()=>updateElement(element, html, firstRun)
+      await gsap.set(element.find(".text"), anim_out);
     }
-  });
+  }
 }
+
 
 const degrees_to_radians = (deg) => (deg * Math.PI) / 180.0;
 
@@ -536,9 +632,9 @@ async function CenterImageDo(element) {
               uncropped_edge.length == 0
             ) {
               if (zoom_x > zoom_y) {
-                minZoom = zoom_x;
+                minZoom = zoom_x * rescalingFactor;
               } else {
-                minZoom = zoom_y;
+                minZoom = zoom_y * rescalingFactor;
               }
             } else {
               if (
@@ -552,12 +648,12 @@ async function CenterImageDo(element) {
                 !uncropped_edge.includes("l") &&
                 !uncropped_edge.includes("r")
               ) {
-                minZoom = zoom_x;
+                minZoom = zoom_x * rescalingFactor;
               } else if (
                 !uncropped_edge.includes("u") &&
                 !uncropped_edge.includes("d")
               ) {
-                minZoom = zoom_y;
+                minZoom = zoom_y * rescalingFactor;
               } else {
                 minZoom = customZoom * proportional_zoom * rescalingFactor;
               }

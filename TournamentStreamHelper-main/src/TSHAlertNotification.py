@@ -1,16 +1,17 @@
 import unicodedata
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
+from qtpy.QtCore import *
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
 import requests
 import os
 import traceback
 import json
 import time
+from loguru import logger
 
 
 class TSHAlertNotificationSignals(QObject):
-    alerts = pyqtSignal(object)
+    alerts = Signal(object)
 
 
 class TSHAlertNotification(QObject):
@@ -31,13 +32,13 @@ class TSHAlertNotification(QObject):
                         "https://raw.githubusercontent.com/joaorb64/TournamentStreamHelper/main/assets/alerts.json")
                     alerts = json.loads(response.text)
                 except Exception as e:
-                    print(traceback.format_exc())
+                    logger.error(traceback.format_exc())
 
                 try:
                     alerts_red = json.load(
                         open('./user_data/alerts_red.json', encoding='utf-8'))
                 except Exception as e:
-                    print(traceback.format_exc())
+                    logger.error(traceback.format_exc())
 
                 filtered = {}
 
@@ -100,7 +101,7 @@ class TSHAlertNotification(QObject):
             alerts_red = json.load(
                 open('./user_data/alerts_red.json', encoding='utf-8'))
         except Exception as e:
-            print(traceback.format_exc())
+            logger.error(traceback.format_exc())
 
         if alerts_red is not None:
             alerts_red.append(id)

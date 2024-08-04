@@ -1,7 +1,8 @@
 import re
 import unicodedata
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
+from qtpy.QtCore import *
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
 import requests
 import os
 import traceback
@@ -9,10 +10,11 @@ from .TSHDictHelper import deep_get
 from ..TournamentDataProvider import TournamentDataProvider
 from .TSHLocaleHelper import TSHLocaleHelper
 import json
+from loguru import logger
 
 
 class TSHCountryHelperSignals(QObject):
-    countriesUpdated = pyqtSignal()
+    countriesUpdated = Signal()
 
 
 class TSHCountryHelper(QObject):
@@ -34,12 +36,30 @@ class TSHCountryHelper(QObject):
                 try:
                     url = 'https://raw.githubusercontent.com/dr5hn/countries-states-cities-database/master/countries%2Bstates%2Bcities.json'
                     r = requests.get(url, allow_redirects=True)
-                    open('./assets/countries+states+cities.json',
-                         'wb').write(r.content)
-                    print("Countries file updated")
-                    TSHCountryHelper.LoadCountries()
+
+                    open(
+                        './assets/countries+states+cities.json.tmp',
+                        'wb'
+                    ).write(r.content)
+
+                    try:
+                        # Test if downloaded JSON is valid
+                        json.load(
+                            open('./assets/countries+states+cities.json.tmp'))
+
+                        # Remove old file, overwrite with new one
+                        os.remove('./assets/countries+states+cities.json')
+                        os.rename(
+                            './assets/countries+states+cities.json.tmp',
+                            './assets/countries+states+cities.json'
+                        )
+
+                        logger.info("Countries file updated")
+                        TSHCountryHelper.LoadCountries()
+                    except:
+                        logger.error("Countries files download failed")
                 except Exception as e:
-                    print(
+                    logger.error(
                         "Could not update /assets/countries+states+cities.json: "+str(e))
         downloaderThread = DownloaderThread(self)
         downloaderThread.start()
@@ -93,20 +113,26 @@ class TSHCountryHelper(QObject):
                     export_name = c["translations"][re.split(
                         "-|_", locale)[0]]
 
+                ccode = c.get("iso2") if not c.get("iso2").isdigit() else "".join([
+                    word[0] for word in re.split(r'\s+|-', c.get("name"))])
+
                 TSHCountryHelper.countries[c["iso2"]] = {
                     "name": export_name,
                     "display_name": display_name,
                     "en_name": c.get("name"),
-                    "code": c.get("iso2"),
+                    "code": ccode,
                     "latitude": c.get("latitude"),
                     "longitude": c.get("longitude"),
                     "states": {}
                 }
 
-                for s in c["states"]:
+                for s in c.get("states", []):
+                    scode = s.get("state_code") if not s.get("state_code").isdigit() else "".join([
+                        word[0] for word in re.split(r'\s+|-', s.get("name"))])
+
                     TSHCountryHelper.countries[c["iso2"]]["states"][s["state_code"]] = {
-                        "name": s["name"],
-                        "code": s["state_code"],
+                        "name": s.get("name"),
+                        "code": scode,
                         "latitude": s.get("latitude"),
                         "longitude": s.get("longitude"),
                     }
@@ -131,7 +157,7 @@ class TSHCountryHelper(QObject):
 
             # Setup cities - states for reverse search
             for country in countries_json:
-                for state in country["states"]:
+                for state in country.get("states"):
                     for c in state["cities"]:
                         if country["iso2"] not in TSHCountryHelper.cities:
                             TSHCountryHelper.cities[country["iso2"]] = {}
@@ -142,9 +168,41 @@ class TSHCountryHelper(QObject):
                                                     ][city_name] = state["state_code"]
 
             TSHCountryHelper.signals.countriesUpdated.emit()
+
+            AdditionalFlags = os.listdir("./user_data/additional_flag")
+
+            AdditionalFlagsFiltered = []
+            for flag in AdditionalFlags:
+                filename = os.path.basename(flag)
+                ext = filename.split(".")[-1]
+                #  Remove flags with less than 3 characters
+                if len(filename.removesuffix("."+ext)) >= 3:
+                    AdditionalFlagsFiltered.append(flag)
+            AdditionalFlags = AdditionalFlagsFiltered
+
+            if AdditionalFlags:
+                separator = QStandardItem()
+                separator.setData("    " + QApplication.translate("app",
+                                  "Custom Flags").upper() + "    ", Qt.ItemDataRole.EditRole)
+                separator.setEnabled(False)
+                separator.setSelectable(False)
+                TSHCountryHelper.countryModel.appendRow(separator)
+
+            for flag in AdditionalFlags:
+                item = QStandardItem()
+                item.setIcon(QIcon(f"./user_data/additional_flag/{flag}"))
+                item.setData({
+                    "name": flag[:-4],
+                    "display_name": flag[:-4],
+                    "en_name": flag[:-4],
+                    "code": flag[:-4],
+                    "asset": f'./user_data/additional_flag/{flag}'
+                }, Qt.ItemDataRole.UserRole)
+                item.setData(flag[:-4], Qt.ItemDataRole.EditRole)
+                TSHCountryHelper.countryModel.appendRow(item)
         except:
             TSHCountryHelper.countries_json = {}
-            print(traceback.format_exc())
+            logger.error(traceback.format_exc())
 
     def FindState(countryCode, city):
         # State explicit?

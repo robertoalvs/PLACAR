@@ -5,19 +5,21 @@ import itertools
 from math import cos, radians, sin
 import random
 import traceback
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import *
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
+from qtpy.QtCore import *
 from pathlib import Path
 import json
 import shutil
 import datetime
 import os
 import re
+from loguru import logger
 
 from src.TSHGameAssetManager import TSHGameAssetManager
 from src.Helpers.TSHLocaleHelper import TSHLocaleHelper
 from src.Helpers.TSHDictHelper import *
+from src.Helpers.TSHAltTextHelper import generate_youtube
 
 is_preview = False
 
@@ -34,11 +36,12 @@ proportional_scaling = True
 
 separator_color_code = "#888888"
 
-crop_borders = [] # left, right, top, bottom
+crop_borders = []  # left, right, top, bottom
 scale_fill_x = 0
 scale_fill_y = 0
 
 proportional_zoom = 1
+
 
 def color_code_to_tuple(color_code):
     raw_color_code = color_code.lstrip("#")
@@ -76,7 +79,7 @@ def generate_separator_images(thumbnail, color_code="#888888", width=3):
 
     painter.end()
 
-    return(x_separator, y_separator)
+    return (x_separator, y_separator)
 
 
 def find(element, json):
@@ -102,7 +105,7 @@ def calculate_new_dimensions(current_size, max_size):
     else:
         new_x = max_size[0]
         new_y = x_ratio*current_size.height()
-    return((round(new_x), round(new_y)))
+    return ((round(new_x), round(new_y)))
 
 
 def resize_image_to_max_size(image: QPixmap, max_size, eyesight_coordinates=None, fill_x=True, fill_y=True, zoom=1):
@@ -131,15 +134,19 @@ def resize_image_to_max_size(image: QPixmap, max_size, eyesight_coordinates=None
             if eyesight_coordinates:
                 resized_eyesight = (
                     round(eyesight_coordinates[0]*x_ratio*effective_zoom), round(eyesight_coordinates[1]*x_ratio*effective_zoom))
-        if not(new_x < max_size[0] and ("left" in crop_borders) and ("right" in crop_borders)):
-            if not(new_y < max_size[1] and ("top" in crop_borders) and ("bottom" in crop_borders)):
+        if not (new_x < max_size[0] and ("left" in crop_borders) and ("right" in crop_borders)):
+            if not (new_y < max_size[1] and ("top" in crop_borders) and ("bottom" in crop_borders)):
                 zoom_flag = True
         if not zoom_flag:
             effective_zoom += zoom_step
 
     new_size = (round(new_x), round(new_y))
     new_image = image.scaled(
-        new_size[0], new_size[1], transformMode=Qt.TransformationMode.SmoothTransformation)
+        new_size[0],
+        new_size[1],
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation
+    )
 
     # crop
     if not resized_eyesight:
@@ -183,9 +190,10 @@ def resize_image_to_max_size(image: QPixmap, max_size, eyesight_coordinates=None
             bottom = max_size[1]
             top = new_y - max_size[1]
 
-    new_image = create_composite_image(new_image, QSize(max_size[0], max_size[1]), (-left, -top))
+    new_image = create_composite_image(
+        new_image, QSize(max_size[0], max_size[1]), (-left, -top))
 
-    return(new_image)
+    return (new_image)
 
 
 def create_composite_image(image, size, coordinates):
@@ -194,7 +202,8 @@ def create_composite_image(image, size, coordinates):
     painter = QPainter(background)
     painter.drawPixmap(int(coordinates[0]), int(coordinates[1]), image)
     painter.end()
-    return(background)
+    return (background)
+
 
 def generate_multicharacter_positions(character_number, center=[0.5, 0.5], radius=0.3, angle=45):
     positions = []
@@ -202,23 +211,23 @@ def generate_multicharacter_positions(character_number, center=[0.5, 0.5], radiu
     # For 1 character, just center it
     if character_number == 1:
         radius = 0
-    
+
     angle_rad = radians(angle+45)
 
     if character_number == 2:
         angle_rad = radians(angle)
-    
+
     pendulum = 1
 
     for i in range(character_number):
         if i > 1:
-            if i%2 == 0:
+            if i % 2 == 0:
                 pendulum *= -1
             else:
                 pendulum *= -1
                 pendulum += 1
             i = pendulum
-        
+
         angle = angle_rad + radians(360/character_number) * i
         pos = [
             center[0] + cos(angle) * radius,
@@ -227,6 +236,7 @@ def generate_multicharacter_positions(character_number, center=[0.5, 0.5], radiu
         positions.append(pos)
 
     return positions
+
 
 def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyesight_matrix, rescaling_matrix, player_index=0, flip_p1=False, flip_p2=False, fill_x=True, fill_y=True, customZoom=1, horizontalAlign=50, verticalAlign=50, uncropped_edges=[]):
     num_line = len(path_matrix)
@@ -243,7 +253,7 @@ def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyes
     # if (player_index == 1 and flip_p2) or (player_index == 0 and flip_p1):
     #     paste_coordinates = (
     #         round(thumbnail.width()-paste_coordinates[0]-max_size[0]), paste_coordinates[1])
-        # thumbnail = thumbnail.transformed(QTransform().scale(-1, 1))
+    # thumbnail = thumbnail.transformed(QTransform().scale(-1, 1))
 
     for line_index in range(0, len(path_matrix)):
         line = path_matrix[line_index]
@@ -290,12 +300,13 @@ def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyes
                 paste_coordinates[0] + curr_col_index*individual_max_size[0])
             individual_paste_y = round(
                 paste_coordinates[1] + curr_line_index*individual_max_size[1])
-            
+
             if no_separator != 0:
-                individual_max_size = (max_size[0], round(max_size[1]/num_line))
+                individual_max_size = (
+                    max_size[0], round(max_size[1]/num_line))
                 individual_paste_x = paste_coordinates[0]
 
-            print(f"Processing asset: {image_path}")
+            logger.info(f"Processing asset: {image_path}")
 
             pix = QPixmap(image_path, "RGBA")
             tmpWidth = int(pix.width() * image_ratio[0])
@@ -311,13 +322,13 @@ def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyes
                         eyesight_line[col_index][0] * image_ratio[0],
                         eyesight_line[col_index][1] * image_ratio[1]
                     )
-            
+
             uncropped_edge = []
 
             if len(uncropped_edges) >= line_index:
                 if len(uncropped_edges[line_index]) >= col_index:
                     uncropped_edge = uncropped_edges[line_index][col_index]
-            
+
             # For cropped assets, zoom to fill
             # Calculate max zoom
             zoom_x = max_size[0] / tmpWidth
@@ -325,7 +336,7 @@ def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyes
 
             min_zoom = 1
 
-            print(rescaling_matrix)
+            # print(rescaling_matrix)
 
             global proportional_scaling
 
@@ -334,25 +345,25 @@ def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyes
             else:
                 rescaling_factor = 1
 
-            print(uncropped_edge)
+            # print(uncropped_edge)
 
             if not uncropped_edge:
                 if zoom_x > zoom_y:
-                    min_zoom = zoom_x
+                    min_zoom = zoom_x * rescaling_factor
                 else:
-                    min_zoom = zoom_y
+                    min_zoom = zoom_y * rescaling_factor
             else:
                 if 'u' in uncropped_edge and 'd' in uncropped_edge and 'l' in uncropped_edge and 'r' in uncropped_edge:
                     min_zoom = customZoom * proportional_zoom * rescaling_factor
                 elif not 'l' in uncropped_edge and not 'r' in uncropped_edge:
-                    min_zoom = zoom_x
+                    min_zoom = zoom_x * rescaling_factor
                 elif not 'u' in uncropped_edge and not 'd' in uncropped_edge:
-                    min_zoom = zoom_y
+                    min_zoom = zoom_y * rescaling_factor
                 else:
                     min_zoom = customZoom * proportional_zoom * rescaling_factor
 
             global scale_fill_x, scale_fill_y
-            print("scale_fill", scale_fill_x, scale_fill_y)
+            # print("scale_fill", scale_fill_x, scale_fill_y)
             if scale_fill_x and not scale_fill_y:
                 min_zoom = zoom_x
             elif scale_fill_y and not scale_fill_x:
@@ -361,7 +372,7 @@ def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyes
                 min_zoom = max(zoom_x, zoom_y)
 
             zoom = max(min_zoom, customZoom * min_zoom)
-            print("zoom", zoom)
+            # print("zoom", zoom)
 
             xx = 0
             yy = 0
@@ -385,38 +396,45 @@ def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyes
             if not customCenter:
                 customCenter = [0.5, 0.5]
 
-            xx = -eyesight_coordinates[0] * zoom + individual_max_size[0] * customCenter[0]
-            yy = -eyesight_coordinates[1] * zoom + individual_max_size[1] * customCenter[1]
+            xx = -eyesight_coordinates[0] * zoom + \
+                individual_max_size[0] * customCenter[0]
+            yy = -eyesight_coordinates[1] * zoom + \
+                individual_max_size[1] * customCenter[1]
 
             original_xx = xx
             original_yy = yy
-            
+
             # Max move X
             maxMoveX = individual_max_size[0] - tmpWidth * zoom
 
             if not 'l' in uncropped_edge:
-                if xx > 0: xx = 0
-            
+                if xx > 0:
+                    xx = 0
+
             if not 'r' in uncropped_edge:
-                if xx < maxMoveX: xx = maxMoveX
+                if xx < maxMoveX:
+                    xx = maxMoveX
 
             # Max move Y
             maxMoveY = individual_max_size[1] - tmpHeight * zoom
 
             if not 'u' in uncropped_edge:
-                if yy > 0: yy = 0
-            
+                if yy > 0:
+                    yy = 0
+
             if not 'd' in uncropped_edge:
-                if yy < maxMoveY: yy = maxMoveY
+                if yy < maxMoveY:
+                    yy = maxMoveY
 
             flip = False
 
             if (player_index == 1 and flip_p2) or (player_index == 0 and flip_p1):
                 flip = True
-            
-            area = QPixmap(int(individual_max_size[0]), int(individual_max_size[1]))
+
+            area = QPixmap(int(individual_max_size[0]), int(
+                individual_max_size[1]))
             area.fill(QColor(0, 0, 0, 0))
-            
+
             areaPaint = QPainter(area)
 
             transformMode = Qt.TransformationMode.SmoothTransformation
@@ -427,7 +445,12 @@ def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyes
             areaPaint.drawPixmap(
                 int(xx), int(yy),
                 pix
-                .scaled(int(zoom*tmpWidth), int(zoom*tmpHeight), transformMode=transformMode)
+                .scaled(
+                    int(zoom*tmpWidth),
+                    int(zoom*tmpHeight),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    transformMode
+                )
             )
 
             areaPaint.end()
@@ -446,26 +469,30 @@ def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyes
                 global font_1
                 draw_text(
                     debugPix,
-                    QApplication.translate("Form", "Scale: {0}").format("{0:.2f}".format(zoom)) + '%'+"\n",
+                    QApplication.translate("Form", "Scale: {0}").format(
+                        "{0:.2f}".format(zoom)) + '%'+"\n",
                     font_1, 24, (0, 0, 0),
-                    (round(paste_coordinates[0] + col_index*round(max_size[0]/num_col)), individual_paste_y+2),
+                    (round(paste_coordinates[0] + col_index *
+                     round(max_size[0]/num_col)), individual_paste_y+2),
                     (round(max_size[0]/num_col), 24),
                     True,
-                    (200,200,200),
+                    (200, 200, 200),
                     (4, 2)
                 )
 
                 draw_text(
                     debugPix,
-                    QApplication.translate("Form", "Eyesight offset: ({0}, {1})").format(int(original_xx - xx), int(original_yy - yy)),
+                    QApplication.translate("Form", "Eyesight offset: ({0}, {1})").format(
+                        int(original_xx - xx), int(original_yy - yy)),
                     font_1, 24, (0, 0, 0),
-                    (round(paste_coordinates[0] + col_index*round(max_size[0]/num_col)), individual_paste_y+22),
+                    (round(paste_coordinates[0] + col_index *
+                     round(max_size[0]/num_col)), individual_paste_y+22),
                     (round(max_size[0]/num_col), 24),
                     True,
-                    (200,200,200),
+                    (200, 200, 200),
                     (4, 2)
                 )
-            
+
             if no_separator == 0:
                 separator_right = False
                 separator_down = False
@@ -487,10 +514,11 @@ def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyes
                         if line[c] != None:
                             separator_right = True
                             break
-                
+
                 if separator_right and separator_width > 0:
                     painter = QPainter(separatorsPix)
-                    painter.setPen(QPen(QColor(separator_color_code), separatorWidth))
+                    painter.setPen(
+                        QPen(QColor(separator_color_code), separatorWidth))
                     painter.drawLine(
                         individual_paste_x + individual_max_size[0],
                         individual_paste_y,
@@ -498,10 +526,11 @@ def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyes
                         individual_paste_y + individual_max_size[1],
                     )
                     painter.end()
-                
+
                 if separator_down and separator_width > 0:
                     painter = QPainter(separatorsPix)
-                    painter.setPen(QPen(QColor(separator_color_code), separatorHeight))
+                    painter.setPen(
+                        QPen(QColor(separator_color_code), separatorHeight))
                     painter.drawLine(
                         individual_paste_x,
                         individual_paste_y + individual_max_size[1],
@@ -509,17 +538,17 @@ def paste_image_matrix(thumbnail, path_matrix, max_size, paste_coordinates, eyes
                         individual_paste_y + individual_max_size[1],
                     )
                     painter.end()
-            
+
         painter = QPainter(thumbnail)
         painter.drawPixmap(0, 0, separatorsPix)
         if is_preview:
             painter.drawPixmap(0, 0, debugPix)
         painter.end()
 
-    return(thumbnail)
+    return (thumbnail)
 
 
-def paste_characters(thumbnail, data, all_eyesight, used_assets, flip_p1=False, flip_p2=False, fill_x=True, fill_y=True, zoom=1, horizontalAlign=50, verticalAlign=50):
+def paste_characters(thumbnail, data, all_eyesight, used_assets, flip_p1=False, flip_p2=False, fill_x=True, fill_y=True, zoom=1, horizontalAlign=50, verticalAlign=50, scoreboardNumber=1):
     max_x_size = round(
         template_data["character_images"]["dimensions"]["x"]*ratio[0]/2)
     max_y_size = round(
@@ -546,7 +575,13 @@ def paste_characters(thumbnail, data, all_eyesight, used_assets, flip_p1=False, 
         uncropped_edge_matrix = []
         rescaling_matrix = []
 
-        current_team = find(f"score.team.{team_index}.player", data)
+        try:
+            current_team = find(
+                f"score.{scoreboardNumber}.team.{team_index}.player", data)
+        except Exception as e:
+            logger.error(traceback.format_exc())
+            return
+
         for player_key in current_team.keys():
             character_list = []
             eyesight_list = []
@@ -566,7 +601,7 @@ def paste_characters(thumbnail, data, all_eyesight, used_assets, flip_p1=False, 
                     if character_path.get("eyesight"):
                         eyesight_coordinates = (
                             character_path.get("eyesight")["x"], character_path.get("eyesight")["y"])
-                    
+
                     # Uncropped edges
                     uncropped_edges = None
 
@@ -574,11 +609,11 @@ def paste_characters(thumbnail, data, all_eyesight, used_assets, flip_p1=False, 
                         uncropped_edges = character_path.get("uncropped_edge")
                     else:
                         uncropped_edges = []
-                    
+
                     # Average size
                     if character_path.get("average_size") is not None:
                         average_size = character_path.get("average_size")
-                    
+
                     # Rescale
                     rescale_factor = 1
 
@@ -613,7 +648,7 @@ def paste_characters(thumbnail, data, all_eyesight, used_assets, flip_p1=False, 
                     eyesight_matrix.append(eyesight_list)
                     uncropped_edge_matrix.append(uncropped_edge_list)
                     rescaling_matrix.append(rescaling_list)
-        
+
         if no_separator:
             path_matrix = [path_matrix]
             eyesight_matrix = [eyesight_matrix]
@@ -622,11 +657,15 @@ def paste_characters(thumbnail, data, all_eyesight, used_assets, flip_p1=False, 
 
         # Transpose character lists
         if not no_separator and flip_direction:
-            path_matrix = list(map(list, itertools.zip_longest(*path_matrix, fillvalue=None)))
-            eyesight_matrix = list(map(list, itertools.zip_longest(*eyesight_matrix, fillvalue=None)))
-            uncropped_edge_matrix = list(map(list, itertools.zip_longest(*uncropped_edge_matrix, fillvalue=None)))
-            rescaling_matrix = list(map(list, itertools.zip_longest(*rescaling_matrix, fillvalue=None)))
-        
+            path_matrix = list(
+                map(list, itertools.zip_longest(*path_matrix, fillvalue=None)))
+            eyesight_matrix = list(
+                map(list, itertools.zip_longest(*eyesight_matrix, fillvalue=None)))
+            uncropped_edge_matrix = list(
+                map(list, itertools.zip_longest(*uncropped_edge_matrix, fillvalue=None)))
+            rescaling_matrix = list(
+                map(list, itertools.zip_longest(*rescaling_matrix, fillvalue=None)))
+
         path_matrices.append(path_matrix)
         eyesight_matrices.append(eyesight_matrix)
         uncropped_edge_matrices.append(uncropped_edge_matrix)
@@ -638,11 +677,13 @@ def paste_characters(thumbnail, data, all_eyesight, used_assets, flip_p1=False, 
 
     if average_size is not None:
         proportional_zoom = 0
-        proportional_zoom = max(proportional_zoom, max_size[0] / ratio[0] / average_size.get("x") * 1.2)
-        proportional_zoom = max(proportional_zoom, max_size[1] / ratio[1] / average_size.get("y") * 1.2)
+        proportional_zoom = max(
+            proportional_zoom, max_size[0] / ratio[0] / average_size.get("x") * 1.2)
+        proportional_zoom = max(
+            proportional_zoom, max_size[1] / ratio[1] / average_size.get("y") * 1.2)
     else:
         # Keeping this as a fallback, but should never enter this block of code
-        print("No proportional size. Calculating.")
+        # print("No proportional size. Calculating.")
         max_width = 0
         max_height = 0
 
@@ -650,13 +691,20 @@ def paste_characters(thumbnail, data, all_eyesight, used_assets, flip_p1=False, 
             for player_pathes in path_matrix:
                 for path in player_pathes:
                     pix = QPixmap(path)
-                    pix = pix.scaled(int(pix.width() * ratio[0]), int(pix.height() * ratio[1]), transformMode=Qt.TransformationMode.SmoothTransformation)
+                    pix = pix.scaled(
+                        int(pix.width() * ratio[0]),
+                        int(pix.height() * ratio[1]),
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation
+                    )
                     max_width = max(max_width, pix.width())
                     max_height = max(max_height, pix.height())
-        
+
         if max_width != 0 and max_height != 0:
-            proportional_zoom = max(proportional_zoom, max_size[0] / max_width * 1.2)
-            proportional_zoom = max(proportional_zoom, max_size[1] / max_height * 1.2)
+            proportional_zoom = max(
+                proportional_zoom, max_size[0] / max_width * 1.2)
+            proportional_zoom = max(
+                proportional_zoom, max_size[1] / max_height * 1.2)
 
     for i in [0, 1]:
         team_index = i+1
@@ -665,16 +713,16 @@ def paste_characters(thumbnail, data, all_eyesight, used_assets, flip_p1=False, 
         eyesight_matrix = eyesight_matrices[i]
         uncropped_edge_matrix = uncropped_edge_matrices[i]
         rescale_matrix = rescaling_matrices[i]
-        
+
         paste_x = origin_x_coordinates[i]
         paste_y = origin_y_coordinates[i]
         paste_coordinates = (paste_x, paste_y)
-        
+
         thumbnail = paste_image_matrix(
             thumbnail, path_matrix, max_size, paste_coordinates, eyesight_matrix, rescale_matrix, i, flip_p1, flip_p2,
             fill_x, fill_y, zoom, horizontalAlign=horizontalAlign, verticalAlign=verticalAlign, uncropped_edges=uncropped_edge_matrix)
 
-    return(thumbnail)
+    return (thumbnail)
 
 
 def draw_text(thumbnail, text, font_data, max_font_size, color, pos, container_size, outline, outline_color, padding=(32, 16), skew=(0, 0)):
@@ -696,7 +744,7 @@ def draw_text(thumbnail, text, font_data, max_font_size, color, pos, container_s
 
     fontMetrics = QFontMetricsF(font)
 
-    while(fontMetrics.height()+2*padding[1] > int(container_size[1])):
+    while (fontMetrics.height()+2*padding[1] > int(container_size[1])):
         max_font_size -= 1
         if max_font_size <= 0:
             raise ValueError("Text too small, size cannot be negative")
@@ -705,7 +753,7 @@ def draw_text(thumbnail, text, font_data, max_font_size, color, pos, container_s
 
     stretch = 100
 
-    while(fontMetrics.width(text)+2*padding[0] > int(container_size[0])):
+    while (fontMetrics.width(text)+2*padding[0] > int(container_size[0])):
         if stretch <= template_data["lower_text_stretch_limit"]:
             max_font_size -= 1
             if max_font_size <= 0:
@@ -719,7 +767,7 @@ def draw_text(thumbnail, text, font_data, max_font_size, color, pos, container_s
     text_x = round((padding[0]))
     text_y = round((padding[1]))
     text_coordinates = (text_x, text_y)
-    print(text_coordinates)
+    # print(text_coordinates)
 
     if outline:
         stroke_width = round(8*ratio[1])
@@ -734,12 +782,13 @@ def draw_text(thumbnail, text, font_data, max_font_size, color, pos, container_s
 
     if isinstance(color, tuple):
         color = [color] * len(text)
-    
-    pos_x = int(text_coordinates[0]) + (container_size[0] - padding[0]*2) / 2 - fontMetrics.width(text)/2
+
+    pos_x = int(text_coordinates[0]) + (container_size[0] -
+                                        padding[0]*2) / 2 - fontMetrics.width(text)/2
 
     for i, char in enumerate(text):
         path.clear()
-        
+
         pen.setWidth(stroke_width)
         pen.setColor(QColor(
             outline_color[0],
@@ -773,7 +822,8 @@ def draw_text(thumbnail, text, font_data, max_font_size, color, pos, container_s
 
     painter.end()
 
-    pix = pix.transformed(QTransform().shear(radians(skew[0]), radians(skew[1])), Qt.TransformationMode.SmoothTransformation)
+    pix = pix.transformed(QTransform().shear(radians(skew[0]), radians(
+        skew[1])), Qt.TransformationMode.SmoothTransformation)
 
     # Paste pixmap in the thumbnail
     painter = QPainter(thumbnail)
@@ -781,7 +831,8 @@ def draw_text(thumbnail, text, font_data, max_font_size, color, pos, container_s
     painter.drawPixmap(pos[0], pos[1], pix)
     painter.end()
 
-def paste_player_text(thumbnail, data, use_team_names=False, use_sponsors=True):
+
+def paste_player_text(thumbnail, data, use_team_names=False, use_sponsors=True, scoreboardNumber=1):
     text_player_max_dimensions = (round(template_data["character_images"]["dimensions"]["x"]*ratio[0]/2.0), round(
         template_data["player_text"]["dimensions"]["y"]*ratio[1]))
     text_player_coordinates = [
@@ -796,18 +847,19 @@ def paste_player_text(thumbnail, data, use_team_names=False, use_sponsors=True):
     text_size = template_data["initial_font_size"]*ratio[1]
     player_text_color = text_color[0]
 
-
     for i in [0, 1]:
         team_index = i+1
         player_list = []
         color_mask = []
         final_color_mask = []
 
-        if use_team_names and find(f"score.team.{team_index}.teamName", data):
-            player_name = find(f"score.team.{team_index}.teamName", data)
+        if use_team_names and find(f"score.{scoreboardNumber}.team.{team_index}.teamName", data):
+            player_name = find(
+                f"score.{scoreboardNumber}.team.{team_index}.teamName", data)
             final_color_mask = player_text_color["font_color"]
         else:
-            current_team = find(f"score.team.{team_index}.player", data)
+            current_team = find(
+                f"score.{scoreboardNumber}.team.{team_index}.player", data)
             for key in current_team.keys():
                 current_data = ""
                 individual_color_mask = []
@@ -818,14 +870,16 @@ def paste_player_text(thumbnail, data, use_team_names=False, use_sponsors=True):
                     individual_color_mask += [sponsor_color[i]] * len(team+" ")
 
                 current_data += current_team[key].get("name", "")
-                individual_color_mask += [player_text_color["font_color"]] * len(current_team[key].get("name", ""))
-                
+                individual_color_mask += [player_text_color["font_color"]
+                                          ] * len(current_team[key].get("name", ""))
+
                 if current_data:
                     current_data = current_data.strip()
-                
+
                 if (not use_sponsors) or (not current_data):
                     current_data = current_team[key].get("name", "")
-                    individual_color_mask += [player_text_color["font_color"]] * len(current_data)
+                    individual_color_mask += [
+                        player_text_color["font_color"]] * len(current_data)
                     if current_data:
                         current_data = current_data.strip()
                 if current_data:
@@ -833,7 +887,7 @@ def paste_player_text(thumbnail, data, use_team_names=False, use_sponsors=True):
                     color_mask.append(individual_color_mask)
 
             player_name = " / ".join(player_list)
-            
+
             final_color_mask = color_mask[0]
 
             if len(color_mask) > 0:
@@ -846,7 +900,7 @@ def paste_player_text(thumbnail, data, use_team_names=False, use_sponsors=True):
         else:
             player_type = "player"
 
-        print(f"Processing {player_type}: {player_name}")
+        # print(f"Processing {player_type}: {player_name}")
 
         draw_text(
             thumbnail,
@@ -869,7 +923,7 @@ def paste_player_text(thumbnail, data, use_team_names=False, use_sponsors=True):
         )
 
 
-def paste_round_text(thumbnail, data, display_phase=True):
+def paste_round_text(thumbnail, data, display_phase=True, scoreboardNumber=1):
     if display_phase:
         if template_data["info_text"]["horizontal"]:
             round_text_pos = (round(template_data["info_text"]["x_position"]*ratio[0]), round((template_data["info_text"]["height_center"]-(
@@ -898,7 +952,7 @@ def paste_round_text(thumbnail, data, display_phase=True):
 
         draw_text(
             thumbnail,
-            find(f"score.phase", data),
+            find(f"score.{scoreboardNumber}.phase", data),
             font_2,
             text_size,
             text_color[1]["font_color"],
@@ -918,7 +972,7 @@ def paste_round_text(thumbnail, data, display_phase=True):
 
         draw_text(
             thumbnail,
-            find(f"score.match", data),
+            find(f"score.{scoreboardNumber}.match", data),
             font_2,
             text_size,
             text_color[1]["font_color"],
@@ -945,7 +999,7 @@ def paste_round_text(thumbnail, data, display_phase=True):
 
         draw_text(
             thumbnail,
-            find(f"score.match", data),
+            find(f"score.{scoreboardNumber}.match", data),
             font_2,
             text_size,
             text_color[1]["font_color"],
@@ -987,7 +1041,7 @@ def paste_main_icon(thumbnail, icon_path):
         y_offset = template_data["base_ratio"]["y"] - \
             template_data["icons_position"]["y_offset"] - \
             icon_image.height()/ratio[1]
-        print(y_offset)
+        # print(y_offset)
         if template_data["icons_position"]["bind_to_character_images"]:
             y_offset = template_data["character_images"]["position"]["y"] + template_data["character_images"]["dimensions"]["y"] - \
                 template_data["icons_position"]["y_offset"] - \
@@ -1002,12 +1056,12 @@ def paste_main_icon(thumbnail, icon_path):
     painter = QPainter(thumbnail)
     painter.drawPixmap(0, 0, composite_image)
     painter.end()
-    return(thumbnail)
+    return (thumbnail)
 
 
 def paste_side_icon(thumbnail, icon_path_list):
     if len(icon_path_list) > 2:
-        raise(ValueError(msg="Error: icon_path_list has 3 or more elements"))
+        raise (ValueError(msg="Error: icon_path_list has 3 or more elements"))
 
     max_x_size = round(
         template_data["icons_position"]["side"]["dimensions"]["x"]*ratio[0])
@@ -1033,7 +1087,7 @@ def paste_side_icon(thumbnail, icon_path_list):
                 y_offset = template_data["base_ratio"]["y"] - \
                     template_data["icons_position"]["y_offset"] - \
                     icon_image.height()/ratio[1]
-                print(y_offset)
+                # print(y_offset)
                 if template_data["icons_position"]["bind_to_character_images"]:
                     y_offset = template_data["character_images"]["position"]["y"] + template_data["character_images"]["dimensions"]["y"] - \
                         template_data["icons_position"]["y_offset"] - \
@@ -1056,7 +1110,7 @@ def paste_side_icon(thumbnail, icon_path_list):
             painter = QPainter(thumbnail)
             painter.drawPixmap(0, 0, composite_image)
             painter.end()
-    return(thumbnail)
+    return (thumbnail)
 
 
 def createFalseData(gameAssetManager: TSHGameAssetManager = None, used_assets: str = None):
@@ -1072,7 +1126,8 @@ def createFalseData(gameAssetManager: TSHGameAssetManager = None, used_assets: s
                     random.randint(0, len(gameAssetManager.instance.characters)-1)]
 
                 character = gameAssetManager.instance.characters[key]
-                skin = random.randint(0, len(gameAssetManager.instance.characters[key]))
+                skin = random.randint(
+                    0, len(gameAssetManager.instance.characters[key]))
 
                 data = gameAssetManager.instance.GetCharacterAssets(
                     character.get("codename"), skin)
@@ -1109,8 +1164,8 @@ def createFalseData(gameAssetManager: TSHGameAssetManager = None, used_assets: s
     else:
         for i in range(4):
             chars.append({
-                "name": QApplication.translate("app","Player {0}").format(i+1),
-                "team": QApplication.translate("app","Sponsor {0}").format(i+1),
+                "name": QApplication.translate("app", "Player {0}").format(i+1),
+                "team": QApplication.translate("app", "Sponsor {0}").format(i+1),
                 "asset": {
                     "assets": {
                         "full": {
@@ -1127,7 +1182,7 @@ def createFalseData(gameAssetManager: TSHGameAssetManager = None, used_assets: s
                 },
             })
 
-    print(chars)
+    # print(chars)
 
     data = {
         "game": {
@@ -1136,59 +1191,62 @@ def createFalseData(gameAssetManager: TSHGameAssetManager = None, used_assets: s
             "smashgg_id": 0
         },
         "score": {
-            "best_of": 0,
-            "match": TSHLocaleHelper.matchNames.get("winners_final"),
-            "phase": TSHLocaleHelper.phaseNames.get("group").format("A"),
-            "team": {
-                "1": {
-                    "losers": False,
-                    "player": {
-                        "1": {
-                            "character": {
-                                "1": chars[0]["asset"],
-                                "2": chars[1]["asset"]
-                            },
-                            "country": {},
-                            "mergedName": f"{chars[0]['team']} | {chars[0]['name']}",
-                            "name": chars[0]["name"],
-                            "state": {},
-                            "team": chars[0]["team"]
-                        }
-                    },
-                    "score": 0,
-                    "teamName": QApplication.translate("app","Team {0}").format("A")
-                },
-                "2": {
-                    "losers": False,
-                    "player": {
-                        "1": {
-                            "character": {
-                                "1": chars[2]["asset"]
-                            },
-                            "country": {},
-                            "mergedName": f"{chars[2]['team']} | {chars[2]['name']}",
-                            "name": chars[2]["name"],
-                            "state": {},
-                            "team": chars[2]["team"]
+            "1": {
+                "best_of": 0,
+                "match": TSHLocaleHelper.matchNames.get("winners_final"),
+                "phase": TSHLocaleHelper.phaseNames.get("group").format("A"),
+                "team": {
+                    "1": {
+                        "losers": False,
+                        "player": {
+                            "1": {
+                                "character": {
+                                    "1": chars[0]["asset"],
+                                    "2": chars[1]["asset"]
+                                },
+                                "country": {},
+                                "mergedName": f"{chars[0]['team']} | {chars[0]['name']}",
+                                "name": chars[0]["name"],
+                                "state": {},
+                                "team": chars[0]["team"]
+                            }
                         },
-                        "2": {
-                            "character": {
-                                "1": chars[3]["asset"]
-                            },
-                            "country": {},
-                            "mergedName": f"{chars[3]['team']} | {chars[3]['name']}",
-                            "name": chars[3]["name"],
-                            "state": {},
-                            "team": chars[3]["team"]
-                        }
+                        "score": 0,
+                        "teamName": QApplication.translate("app", "Team {0}").format("A")
                     },
-                    "score": 0,
-                    "teamName": QApplication.translate("app","Team {0}").format("B")
+                    "2": {
+                        "losers": False,
+                        "player": {
+                            "1": {
+                                "character": {
+                                    "1": chars[2]["asset"]
+                                },
+                                "country": {},
+                                "mergedName": f"{chars[2]['team']} | {chars[2]['name']}",
+                                "name": chars[2]["name"],
+                                "state": {},
+                                "team": chars[2]["team"]
+                            },
+                            "2": {
+                                "character": {
+                                    "1": chars[3]["asset"]
+                                },
+                                "country": {},
+                                "mergedName": f"{chars[3]['team']} | {chars[3]['name']}",
+                                "name": chars[3]["name"],
+                                "state": {},
+                                "team": chars[3]["team"]
+                            }
+                        },
+                        "score": 0,
+                        "teamName": QApplication.translate("app", "Team {0}").format("B")
+                    }
                 }
             }
         }
     }
     return data
+
 
 def remove_special_chars(input_str: str):
     invalid = '<>:"/\|?* '
@@ -1196,7 +1254,8 @@ def remove_special_chars(input_str: str):
         input_str = input_str.replace(char, "")
     return input_str
 
-def generate(settingsManager, isPreview=False, gameAssetManager=None):
+
+def generate(settingsManager, isPreview=False, gameAssetManager=None, scoreboardNumber=1):
     # can't import SettingsManager (ImportError: attempted relative import beyond top-level package) so.. parameter ?
     settings = settingsManager.Get("thumbnail_config")
 
@@ -1233,10 +1292,10 @@ def generate(settingsManager, isPreview=False, gameAssetManager=None):
     ]
     # not blocking so empty
     if side_icon_list[0] and not os.path.isfile(side_icon_list[0]):
-        print(f"Top Left Icon {side_icon_list[0]} doesn't exist !")
+        logger.info(f"Top Left Icon {side_icon_list[0]} doesn't exist !")
         side_icon_list[0] = ''
     if side_icon_list[1] and not os.path.isfile(side_icon_list[1]):
-        print(f"Top Right Icon {side_icon_list[1]} doesn't exist !")
+        logger.info(f"Top Right Icon {side_icon_list[1]} doesn't exist !")
         side_icon_list[1] = ''
     # BOOLEAN
     display_phase = deep_get(settings, f"display_phase")
@@ -1289,12 +1348,13 @@ def generate(settingsManager, isPreview=False, gameAssetManager=None):
             data = json.loads(f.read())
         # if data missing
         if not data.get("game").get("codename"):
-            raise Exception(QApplication.translate("thumb_app", "Please select a game first"))
+            raise Exception(QApplication.translate(
+                "thumb_app", "Please select a game first"))
         # - if more than one player (team of 2,3 etc), not necessary because test is made on paste_player_text
         for i in [1, 2]:
-            if 'name' not in data.get("score").get("team").get(str(i)).get("player").get("1"):
-                raise Exception(QApplication.translate("thumb_app", "Player {0} tag missing").format(i))
-
+            if 'name' not in data.get("score").get(str(scoreboardNumber)).get("team").get(str(i)).get("player").get("1"):
+                raise Exception(QApplication.translate(
+                    "thumb_app", "Player {0} tag missing").format(i))
         game_codename = data.get("game").get("codename")
         used_assets = deep_get(settings, f"game.{game_codename}.asset_pack")
         asset_data_path = f"./user_data/games/{game_codename}/{used_assets}/config.json"
@@ -1305,15 +1365,17 @@ def generate(settingsManager, isPreview=False, gameAssetManager=None):
     except Exception as e:
         if isPreview:
             game_codename = data.get("game").get("codename")
-            data = createFalseData(gameAssetManager, deep_get(settings, f"game.{game_codename}.asset_pack"))
+            data = createFalseData(gameAssetManager, deep_get(
+                settings, f"game.{game_codename}.asset_pack"))
             used_assets = "full"
             asset_data_path = f"./assets/mock_data/mock_asset/config.json"
             zoom = deep_get(settings, f"game.{game_codename}.zoom", 100)/100
             flip_p1 = deep_get(settings, f"game.{game_codename}.flip_p1")
             flip_p2 = deep_get(settings, f"game.{game_codename}.flip_p2")
-            smooth_scale = deep_get(settings, f"game.{game_codename}.smooth_scale")
+            smooth_scale = deep_get(
+                settings, f"game.{game_codename}.smooth_scale")
         else:
-            raise traceback.format_exc()
+            raise e
 
     try:
         with open(asset_data_path, 'rt', encoding='utf-8') as f:
@@ -1353,31 +1415,37 @@ def generate(settingsManager, isPreview=False, gameAssetManager=None):
         background = background.scaled(
             int(background.width()/2),
             int(background.height()/2),
-            transformMode=Qt.TransformationMode.SmoothTransformation
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation
         )
 
     global ratio
     ratio = (background.width()/template_data["base_ratio"]["x"],
              background.height()/template_data["base_ratio"]["y"])
-    
+
     global scale_fill_x, scale_fill_y
     scale_fill_x = deep_get(settings, f"game.{game_codename}.scaleFillX", 0)
     scale_fill_y = deep_get(settings, f"game.{game_codename}.scaleFillY", 0)
 
     global no_separator
-    no_separator = deep_get(settings, f"game.{game_codename}.hideSeparators", 0)
+    no_separator = deep_get(
+        settings, f"game.{game_codename}.hideSeparators", 0)
 
     global no_separator_angle
-    no_separator_angle = deep_get(settings, f"game.{game_codename}.noSeparatorAngle", 45)
+    no_separator_angle = deep_get(
+        settings, f"game.{game_codename}.noSeparatorAngle", 45)
 
     global no_separator_distance
-    no_separator_distance = deep_get(settings, f"game.{game_codename}.noSeparatorDistance", 30)
+    no_separator_distance = deep_get(
+        settings, f"game.{game_codename}.noSeparatorDistance", 30)
 
     global proportional_scaling
-    proportional_scaling = deep_get(settings, f"game.{game_codename}.proportionalScaling", True)
+    proportional_scaling = deep_get(
+        settings, f"game.{game_codename}.proportionalScaling", True)
 
     global flip_direction
-    flip_direction = deep_get(settings, f"game.{game_codename}.flipSeparators", 0)
+    flip_direction = deep_get(
+        settings, f"game.{game_codename}.flipSeparators", 0)
 
     foreground = foreground.scaled(
         background.width(),
@@ -1397,11 +1465,15 @@ def generate(settingsManager, isPreview=False, gameAssetManager=None):
     painter.drawPixmap(0, 0, background)
     painter.end()
 
-    horizontalAlign = deep_get(settings, f"game.{game_codename}.align.horizontal", 50)
-    verticalAlign = deep_get(settings, f"game.{game_codename}.align.vertical", 40)
+    horizontalAlign = deep_get(
+        settings, f"game.{game_codename}.align.horizontal", 50)
+    verticalAlign = deep_get(
+        settings, f"game.{game_codename}.align.vertical", 40)
 
     thumbnail = paste_characters(
-        thumbnail, data, all_eyesight, used_assets, flip_p1, flip_p2, fill_x=True, fill_y=True, zoom=zoom, horizontalAlign=horizontalAlign, verticalAlign=verticalAlign)
+        thumbnail, data, all_eyesight, used_assets, flip_p1, flip_p2, fill_x=True, fill_y=True, zoom=zoom, horizontalAlign=horizontalAlign, verticalAlign=verticalAlign, scoreboardNumber=scoreboardNumber)
+    if thumbnail is None:
+        return
     composite_image = create_composite_image(
         foreground, thumbnail.size(), (0, 0))
 
@@ -1409,26 +1481,38 @@ def generate(settingsManager, isPreview=False, gameAssetManager=None):
     painter.drawPixmap(0, 0, composite_image)
     painter.end()
 
-    paste_player_text(thumbnail, data, use_team_names, use_sponsors)
-    paste_round_text(thumbnail, data, display_phase)
+    paste_player_text(thumbnail, data, use_team_names,
+                      use_sponsors, scoreboardNumber=scoreboardNumber)
+    paste_round_text(thumbnail, data, display_phase,
+                     scoreboardNumber=scoreboardNumber)
     thumbnail = paste_main_icon(thumbnail, main_icon_path)
     thumbnail = paste_side_icon(thumbnail, side_icon_list)
 
     # TODO get char name
     if not isPreview:
-        tag_player1 = find("score.team.1.player.1.name", data)
-        tag_player2 = find("score.team.2.player.1.name", data)
+        tag_player1 = find(
+            f"score.{scoreboardNumber}.team.1.player.1.name", data)
+        tag_player2 = find(
+            f"score.{scoreboardNumber}.team.2.player.1.name", data)
         thumbnail_filename = f"{remove_special_chars(tag_player1)}-vs-{remove_special_chars(tag_player2)}-{datetime.datetime.utcnow().strftime('%Y-%m-%d-%H-%M-%S')}"
         thumbnail.save(f"{out_path}/{thumbnail_filename}.png")
         thumbnail.save(f"{out_path}/{thumbnail_filename}.jpg")
         if os.path.isdir(tmp_path):
             shutil.rmtree(tmp_path)
-        print(
+        logger.info(
             f"Thumbnail successfully saved as {out_path}/{thumbnail_filename}.png and {out_path}/{thumbnail_filename}.jpg")
+        yt_title, yt_description = generate_youtube(
+            scoreboardNumber, display_phase)
+        with open(f"{out_path}/{thumbnail_filename}_title.txt", "wt", encoding="utf-8") as txt_file:
+            txt_file.write(yt_title)
+        with open(f"{out_path}/{thumbnail_filename}_desc.txt", "wt", encoding="utf-8") as txt_file:
+            txt_file.write(yt_description)
+        logger.info(
+            f"YouTube data successfully saved as {out_path}/{thumbnail_filename}_title.txt and {out_path}/{thumbnail_filename}_desc.txt")
         return f"{out_path}/{thumbnail_filename}.png"
     else:
         thumbnail_filename = f"template"
         thumbnail.save(f"{out_path}/{thumbnail_filename}.png")
-        print(
+        logger.info(
             f"Thumbnail successfully saved as {out_path}/{thumbnail_filename}.png")
         return f"{out_path}/{thumbnail_filename}.png"

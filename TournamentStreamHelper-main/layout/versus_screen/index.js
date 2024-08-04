@@ -29,10 +29,10 @@ LoadEverything().then(() => {
     let data = event.data;
     let oldData = event.oldData;
 
-    let isTeams = Object.keys(data.score.team["1"].player).length > 1;
+    let isTeams = Object.keys(data.score[window.scoreboardNumber].team["1"].player).length > 1;
 
     if (!isTeams) {
-      const teams = Object.values(data.score.team);
+      const teams = Object.values(data.score[window.scoreboardNumber].team);
       for (const [t, team] of teams.entries()) {
         const players = Object.values(team.player);
         for (const [p, player] of players.entries()) {
@@ -46,7 +46,6 @@ LoadEverything().then(() => {
                     </span>
                     ${await Transcript(player.name)}
                   </div>
-                  ${team.losers ? "<span class='losers'>L</span>" : ""}
               </span>
             `
           );
@@ -62,7 +61,9 @@ LoadEverything().then(() => {
               : ""
           );
 
-          SetInnerHtml($(`.p${t + 1} .real_name`), `${player.real_name}`);
+          SetInnerHtml($(`.p${t + 1} .real_name`), player.real_name);
+
+          SetInnerHtml($(`.p${t + 1} .seed`), player.seed ? `Seed ${player.seed}` : "");
 
           SetInnerHtml(
             $(`.p${t + 1} .twitter`),
@@ -102,6 +103,30 @@ LoadEverything().then(() => {
               : ""
           );
 
+          let characterNames = [];
+
+          if(!window.ONLINE_AVATAR && !window.PLAYER_AVATAR){
+            for (const [p, player] of Object.values(team.player).entries()) {
+              let characters = _.get(player, "character");
+              for (const c of Object.values(characters)) {
+                if (c.name) characterNames.push(c.name);
+              }
+            }
+          }
+
+          SetInnerHtml(
+            $(`.p${t + 1} .character_name`),
+            `
+                ${characterNames.join(" / ")}
+            `
+          );
+
+          gsap.to($(`.p${t + 1} .losers_badge`), {
+            autoAlpha: team.losers ? 1 : 0,
+            overwrite: true,
+            duration: 0.8,
+          });
+
           let zIndexMultiplyier = 1;
           if (t == 1) zIndexMultiplyier = -1;
 
@@ -109,17 +134,17 @@ LoadEverything().then(() => {
             await CharacterDisplay(
               $(`.p${t + 1}.character`),
               {
-                source: `score.team.${t + 1}`,
+                source: `score.${window.scoreboardNumber}.team.${t + 1}`,
                 scale_based_on_parent: true,
                 anim_out: {
                   x: zIndexMultiplyier * -800 + "px",
-                  z: 0,
+                  z: 0 + "px",
                   stagger: 0.1,
                 },
                 anim_in: {
                   duration: 0.4,
-                  x: zIndexMultiplyier * 20 + "px",
-                  z: 50 + "px",
+                  x: zIndexMultiplyier * 0 + "px",
+                  z: -30 + "px",
                   ease: "in",
                   autoAlpha: 1,
                   stagger: 0.1,
@@ -141,13 +166,13 @@ LoadEverything().then(() => {
               {
                 anim_out: {
                   x: zIndexMultiplyier * -800 + "px",
-                  z: 0,
+                  z: 0 + "px",
                   stagger: 0.1,
                 },
                 anim_in: {
                   duration: 0.4,
-                  x: zIndexMultiplyier * 20 + "px",
-                  z: 50 + "px",
+                  x: zIndexMultiplyier * 0 + "px",
+                  z: -30 + "px",
                   ease: "in",
                   autoAlpha: 1,
                   stagger: 0.1,
@@ -160,7 +185,7 @@ LoadEverything().then(() => {
               `
                 <div class="player_avatar">
                   <div style="background-image: url('${
-                    player.avatar ? player.avatar : "./person.svg"
+                    player.avatar ? '../../'+player.avatar : "./person.svg"
                   }');">
                   </div>
                 </div>
@@ -168,13 +193,13 @@ LoadEverything().then(() => {
               {
                 anim_out: {
                   x: zIndexMultiplyier * -800 + "px",
-                  z: 0,
+                  z: 0 + "px",
                   stagger: 0.1,
                 },
                 anim_in: {
                   duration: 0.4,
-                  x: zIndexMultiplyier * 20 + "px",
-                  z: 50 + "px",
+                  x: zIndexMultiplyier * 0 + "px",
+                  z: -30 + "px",
                   ease: "in",
                   autoAlpha: 1,
                   stagger: 0.1,
@@ -183,22 +208,26 @@ LoadEverything().then(() => {
             );
           }
         }
+
+        if(team.color) {
+          document.querySelector(':root').style.setProperty(`--p${t + 1}-score-bg-color`, team.color);
+        }
       }
     } else {
-      const teams = Object.values(data.score.team);
+      const teams = Object.values(data.score[window.scoreboardNumber].team);
       for (const [t, team] of teams.entries()) {
-        let teamName = "";
+        let teamName = team.teamName;
+
+        let names = [];
+        for (const [p, player] of Object.values(team.player).entries()) {
+          if (player && player.name) {
+            names.push(await Transcript(player.name));
+          }
+        }
+        let playerNames = names.join(" / ");
 
         if (!team.teamName || team.teamName == "") {
-          let names = [];
-          for (const [p, player] of Object.values(team.player).entries()) {
-            if (player && player.name) {
-              names.push(await Transcript(player.name));
-            }
-          }
-          teamName = names.join(" / ");
-        } else {
-          teamName = team.teamName;
+          teamName = playerNames;
         }
 
         SetInnerHtml(
@@ -208,20 +237,45 @@ LoadEverything().then(() => {
                 <div>
                   ${teamName}
                 </div>
-                ${team.losers ? "<span class='losers'>L</span>" : ""}
             </span>
           `
         );
+        if(teamName != playerNames){
+          SetInnerHtml($(`.p${t + 1} .real_name`), playerNames);
+        } else {
+          SetInnerHtml($(`.p${t + 1} .real_name`), "");
+        }
+
+        gsap.to($(`.p${t + 1} .losers_badge`), {
+          autoAlpha: team.losers ? 1 : 0,
+          overwrite: true,
+          duration: 0.8,
+        });
 
         SetInnerHtml($(`.p${t + 1} > .sponsor_logo`), "");
-
-        SetInnerHtml($(`.p${t + 1} .real_name`), ``);
-
         SetInnerHtml($(`.p${t + 1} .twitter`), ``);
-
         SetInnerHtml($(`.p${t + 1} .flagcountry`), "");
-
         SetInnerHtml($(`.p${t + 1} .flagstate`), "");
+        SetInnerHtml($(`.p${t + 1} .pronoun`), "");
+        SetInnerHtml($(`.p${t + 1} .seed`), _.get(team, "player.1.seed") ? `Seed ${_.get(team, "player.1.seed")}` : "");
+
+        let characterNames = [];
+
+        if(!window.ONLINE_AVATAR && !window.PLAYER_AVATAR){
+          for (const [p, player] of Object.values(team.player).entries()) {
+            let characters = _.get(player, "character");
+            for (const c of Object.values(characters)) {
+              if (c.name) characterNames.push(c.name);
+            }
+          }
+        }
+
+        SetInnerHtml(
+          $(`.p${t + 1} .character_name`),
+          `
+              ${characterNames.join(" / ")}
+          `
+        );
 
         let zIndexMultiplyier = 1;
         if (t == 1) zIndexMultiplyier = -1;
@@ -230,17 +284,17 @@ LoadEverything().then(() => {
           await CharacterDisplay(
             $(`.p${t + 1}.character`),
             {
-              source: `score.team.${t + 1}`,
+              source: `score.${window.scoreboardNumber}.team.${t + 1}`,
               scale_based_on_parent: true,
               anim_out: {
                 x: zIndexMultiplyier * -800 + "px",
-                z: 0,
+                z: 0 + "px",
                 stagger: 0.1,
               },
               anim_in: {
                 duration: 0.4,
-                x: zIndexMultiplyier * 20 + "px",
-                z: 50 + "px",
+                x: zIndexMultiplyier * 0 + "px",
+                z: -30 + "px",
                 ease: "in",
                 autoAlpha: 1,
                 stagger: 0.1,
@@ -266,13 +320,13 @@ LoadEverything().then(() => {
             {
               anim_out: {
                 x: zIndexMultiplyier * -800 + "px",
-                z: 0,
+                z: 0 + "px",
                 stagger: 0.1,
               },
               anim_in: {
                 duration: 0.4,
-                x: zIndexMultiplyier * 20 + "px",
-                z: 50 + "px",
+                x: zIndexMultiplyier * 0 + "px",
+                z: -30 + "px",
                 ease: "in",
                 autoAlpha: 1,
                 stagger: 0.1,
@@ -284,7 +338,7 @@ LoadEverything().then(() => {
           for (const [p, player] of Object.values(team.player).entries()) {
             if (player)
               avatars_html += `<div style="background-image: url('${
-                player.avatar ? player.avatar : "./person.svg"
+                player.avatar ? '../../'+player.avatar : "./person.svg"
               }');"></div>`;
           }
           SetInnerHtml(
@@ -297,13 +351,13 @@ LoadEverything().then(() => {
             {
               anim_out: {
                 x: zIndexMultiplyier * -800 + "px",
-                z: 0,
+                z: 0 + "px",
                 stagger: 0.1,
               },
               anim_in: {
                 duration: 0.4,
-                x: zIndexMultiplyier * 20 + "px",
-                z: 50 + "px",
+                x: zIndexMultiplyier * 0 + "px",
+                z: -30 + "px",
                 ease: "in",
                 autoAlpha: 1,
                 stagger: 0.1,
@@ -311,57 +365,34 @@ LoadEverything().then(() => {
             }
           );
         }
+
+        if(team.color) {
+          document.querySelector(':root').style.setProperty(`--p${t + 1}-score-bg-color`, team.color);
+        }
       }
     }
 
-    SetInnerHtml($(`.p1 .score`), String(data.score.team["1"].score));
-    SetInnerHtml($(`.p2 .score`), String(data.score.team["2"].score));
+    SetInnerHtml($(`.p1 .score`), String(data.score[window.scoreboardNumber].team["1"].score));
+    SetInnerHtml($(`.p2 .score`), String(data.score[window.scoreboardNumber].team["2"].score));
 
     SetInnerHtml($(".tournament"), data.tournamentInfo.tournamentName);
-    SetInnerHtml($(".match"), data.score.match);
+    SetInnerHtml($(".event"), data.tournamentInfo.eventName);
+    SetInnerHtml($(".match"), data.score[window.scoreboardNumber].match);
 
-    if (data.score.phase) {
-      gsap.to($(".phase.container"), {
-        autoAlpha: 1,
-        overwrite: true,
-        duration: 0.8,
-      });
-
-      SetInnerHtml(
-        $(".phase:not(.container)"),
-        data.score.phase ? `${data.score.phase}` : ""
-      );
-    } else {
-      gsap.to($(".phase.container"), {
-        autoAlpha: 0,
-        overwrite: true,
-        duration: 0.8,
-      });
-    }
-
-    if (data.score.best_of_text) {
-      gsap.to($(".best_of.container"), {
-        opacity: 1,
-        overwrite: true,
-        duration: 0.8,
-      });
-
-      SetInnerHtml(
-        $(".container .best_of"),
-        data.score.best_of_text ? `${data.score.best_of_text}` : ""
-      );
-    } else {
-      gsap.to($(".best_of.container"), {
-        opacity: 0,
-        overwrite: true,
-        duration: 0.8,
-      });
-    }
+    SetInnerHtml(
+      $(".phase:not(.container)"),
+      data.score[window.scoreboardNumber].phase ? data.score[window.scoreboardNumber].phase : ""
+    );
+  
+    SetInnerHtml(
+      $(".container .best_of"),
+      data.score[window.scoreboardNumber].best_of_text ? data.score[window.scoreboardNumber].best_of_text : ""
+    );
 
     let stage = null;
 
-    if (_.get(data, "score.stage_strike.selectedStage")) {
-      let stageId = _.get(data, "score.stage_strike.selectedStage");
+    if (_.get(data, `score.${window.scoreboardNumber}.stage_strike.selectedStage`)) {
+      let stageId = _.get(data, `score.${window.scoreboardNumber}.stage_strike.selectedStage`);
 
       let allStages = _.get(data, "score.ruleset.neutralStages", []).concat(
         _.get(data, "score.ruleset.counterpickStages", [])
@@ -372,8 +403,8 @@ LoadEverything().then(() => {
 
     if (
       stage &&
-      _.get(data, "score.stage_strike.selectedStage") !=
-        _.get(oldData, "score.stage_strike.selectedStage")
+      _.get(data, `score.${window.scoreboardNumber}.stage_strike.selectedStage`) !=
+        _.get(oldData, `score.${window.scoreboardNumber}.stage_strike.selectedStage`)
     ) {
       gsap.fromTo(
         $(`.stage`),

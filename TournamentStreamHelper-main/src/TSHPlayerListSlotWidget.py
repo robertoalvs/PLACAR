@@ -1,9 +1,10 @@
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import *
-from PyQt5 import uic
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
+from qtpy.QtCore import *
+from qtpy import uic
 import json
 import traceback
+from loguru import logger
 
 from .TSHScoreboardPlayerWidget import TSHScoreboardPlayerWidget
 from .Helpers.TSHCountryHelper import TSHCountryHelper
@@ -12,8 +13,10 @@ from .TSHGameAssetManager import TSHGameAssetManager
 from .TSHPlayerDB import TSHPlayerDB
 from .TSHTournamentDataProvider import TSHTournamentDataProvider
 
+
 class TSHPlayerListSlotWidgetSignals(QObject):
-    dataChanged = pyqtSignal()
+    dataChanged = Signal()
+
 
 class TSHPlayerListSlotWidget(QGroupBox):
     def __init__(self, index, playerList, base="player_list", *args):
@@ -57,12 +60,13 @@ class TSHPlayerListSlotWidget(QGroupBox):
 
                 index = len(self.playerWidgets)-1
 
-                p.btMoveUp.clicked.connect(lambda x, index=index, p=p: p.SwapWith(
+                p.btMoveUp.clicked.connect(lambda x=None, index=index, p=p: p.SwapWith(
                     self.playerWidgets[index-1 if index > 0 else 0]))
-                p.btMoveDown.clicked.connect(lambda x, index=index, p=p: p.SwapWith(
+                p.btMoveDown.clicked.connect(lambda x=None, index=index, p=p: p.SwapWith(
                     self.playerWidgets[index+1 if index < len(self.playerWidgets) - 1 else index]))
-                
-                p.instanceSignals.dataChanged.connect(self.ChildDataChangedEmit)
+
+                p.instanceSignals.dataChanged.connect(
+                    self.ChildDataChangedEmit)
 
             while len(self.playerWidgets) > number:
                 p = self.playerWidgets[-1]
@@ -70,7 +74,7 @@ class TSHPlayerListSlotWidget(QGroupBox):
                 self.playerWidgets.remove(p)
                 StateManager.Unset(p.path)
                 p.deleteLater()
-            
+
             StateManager.ReleaseSaving()
 
         # if number > 1:
@@ -95,24 +99,26 @@ class TSHPlayerListSlotWidget(QGroupBox):
     def SetTeamData(self, data):
         StateManager.BlockSaving()
         self.childDataChangedLock = True
-        if(data.get("name")):
+        if (data.get("name")):
             self.slotName.setText(data.get("name"))
+            self.slotName.editingFinished.emit()
         else:
             self.slotName.setText("")
-        
+            self.slotName.editingFinished.emit()
+
         for i, pw in enumerate(self.playerWidgets):
             if data.get("players"):
                 try:
                     pw.SetData(data.get("players")[i])
                 except:
                     pw.Clear()
-                    print(traceback.format_exc())
+                    logger.error(traceback.format_exc())
             else:
                 pw.Clear()
         StateManager.ReleaseSaving()
         self.childDataChangedLock = False
         self.signals.dataChanged.emit()
-    
+
     def Clear(self):
         StateManager.BlockSaving()
         self.childDataChangedLock = True

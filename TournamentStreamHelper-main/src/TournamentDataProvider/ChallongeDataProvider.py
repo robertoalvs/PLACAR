@@ -1,25 +1,28 @@
+import dateutil.parser
 import requests
 import os
 import traceback
 import re
-import json
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import *
+import orjson
+import time
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
+from qtpy.QtCore import *
 from datetime import datetime
-from dateutil.parser import parse
+import dateutil
 from ..Helpers.TSHDictHelper import deep_get
 from ..TSHGameAssetManager import TSHGameAssetManager
 from ..TSHPlayerDB import TSHPlayerDB
 from .TournamentDataProvider import TournamentDataProvider
-from PyQt5.QtCore import *
-from PyQt5.QtGui import QStandardItem, QStandardItemModel
+from qtpy.QtCore import *
+from qtpy.QtGui import QStandardItem, QStandardItemModel
 from ..Workers import Worker
 from ..Helpers.TSHLocaleHelper import TSHLocaleHelper
 from ..TSHBracket import next_power_of_2
 import math
 import random
 import cloudscraper
+from loguru import logger
 
 HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
@@ -32,6 +35,7 @@ HEADERS = {
 def CHALLONGE_BRACKET_TYPE(bracketType: str):
     mapping = {
         "MatchPlotter": "ROUND_ROBIN",
+        "SchedulePlotter": "ROUND_ROBIN",
         "DoubleEliminationBracketPlotter": "DOUBLE_ELIMINATION"
     }
     if bracketType in mapping:
@@ -45,24 +49,30 @@ class ChallongeDataProvider(TournamentDataProvider):
     def __init__(self, url, threadpool, parent) -> None:
         super().__init__(url, threadpool, parent)
         self.name = "Challonge"
-        max_iter = 10
+        max_iter = 150  # Empyrical limit to cover for a low probability of actually initializing the scraper
         i, initialized = 0, False
         while not initialized and i < max_iter:
             if i > 0:
-                print(f"Retrying Cloudfare initialization (Attempt #{i+1})")
+                logger.info(
+                    f"Retrying Cloudfare initialization (Attempt #{i+1})")
             try:
                 self.scraper = cloudscraper.create_scraper(browser={
                     'browser': 'firefox',
                     'platform': 'windows',
                     'mobile': False
                 })
-                self.scraper.get(f"https://challonge.com/")
-                initialized = True
+                data = self.scraper.get(f"https://challonge.com/games.json")
+                if data.status_code == 200 and "application/json" in data.headers.get("content-type"):
+                    initialized = True
+                else:
+                    i += 1
             except cloudscraper.exceptions.CloudflareException as e:
                 i += 1
                 if i >= max_iter:
                     raise e
-                    #TODO: Find a way to open a warning box and unload tournament if failed
+                    # TODO: Find a way to open a warning box and unload tournament if failed
+            if not initialized:
+                time.sleep(0.2)
 
     def GetSlug(self):
         # URL with language
@@ -83,13 +93,16 @@ class ChallongeDataProvider(TournamentDataProvider):
             prefix = re.findall(r"//([^.]+)", self.url)[0]
             return prefix
 
+    def CleanInputString(self, txt):
+        return re.sub(r"\s*[\(\{\[].*?[\)\}\]]", "", txt).strip()
+
     def GetEnglishUrl(self):
         prefix = self.GetCommunityPrefix()
         if prefix:
             prefix = prefix+"."
-        return f"https://{prefix}challonge.com/{self.GetSlug()}"
+        return f"https://{prefix}challonge.com/en/{self.GetSlug()}"
 
-    def GetTournamentData(self, progress_callback=None):
+    def GetTournamentData(self, progress_callback=None, cancel_event=None):
         finalData = {}
 
         try:
@@ -99,8 +112,8 @@ class ChallongeDataProvider(TournamentDataProvider):
                 f"https://challonge.com/en/search/tournaments.json?filters%5B&page=1&per=1&q={slug}",
 
             )
-
-            data = json.loads(data.text)
+            logger.debug(data.text)
+            data = orjson.loads(data.text)
             collection = deep_get(data, "collection", [{}])[0]
             details = deep_get(collection, "details", [])
 
@@ -111,21 +124,17 @@ class ChallongeDataProvider(TournamentDataProvider):
 
             finalData["tournamentName"] = deep_get(collection, "name")
 
-            # TODO necessary ?
-            if len(details) > 3:
-                startAtStr = deep_get(details[2], "text", "")
-                try:
-                    # test if date
-                    parse(startAtStr, fuzzy=False)
-                    # 'September 29, 2022'
-                    element = datetime.strptime(startAtStr, "%B %d, %Y")
-                    # to timestamp
-                    timestamp = datetime.timestamp(element)
-                    finalData["startAt"] = datetime.timestamp(element)
-                except ValueError:
-                    print('ChallongeDataProvider: No date defined')
-
             details = collection.get("details", [])
+
+            try:
+                dateElement = next(
+                    (d for d in details if d.get("icon") == "fa fa-calendar"), None)
+                if dateElement:
+                    finalData["startAt"] = dateutil.parser.parse(
+                        dateElement.get("text"), fuzzy=True).timestamp()
+            except Exception as e:
+                logger.error(f"Could not get tournament date: {traceback.format_exc()}")
+
             participantsElement = next(
                 (d for d in details if d.get("icon") == "fa fa-users"), None)
             if participantsElement:
@@ -135,7 +144,7 @@ class ChallongeDataProvider(TournamentDataProvider):
             # finalData["address"] = deep_get(
             #     data, "data.event.tournament.venueAddress", "")
         except:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
         return finalData
 
@@ -150,7 +159,7 @@ class ChallongeDataProvider(TournamentDataProvider):
                 headers=HEADERS
             )
 
-            data = json.loads(data.text)
+            data = orjson.loads(data.text)
             collection = deep_get(data, "collection", [{}])[0]
 
             url = collection.get("organizer")
@@ -158,11 +167,11 @@ class ChallongeDataProvider(TournamentDataProvider):
             if url.startswith("//"):
                 url = "https:" + url
         except:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
         return url
 
-    def GetMatch(self, setId, progress_callback):
+    def GetMatch(self, setId, progress_callback, cancel_event):
         finalData = {}
 
         try:
@@ -170,7 +179,7 @@ class ChallongeDataProvider(TournamentDataProvider):
                 self.GetEnglishUrl()+".json",
                 headers=HEADERS
             )
-            data = json.loads(data.text)
+            data = orjson.loads(data.text)
 
             all_matches = self.GetAllMatchesFromData(data)
 
@@ -180,11 +189,66 @@ class ChallongeDataProvider(TournamentDataProvider):
             if match:
                 finalData = self.ParseMatchData(match)
         except:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
         return finalData
 
-    def GetMatches(self, getFinished=False, progress_callback=None):
+    def GetStations(self, progress_callback=None, cancel_event=None):
+        try:
+            logger.info("Get stations")
+
+            final_data = []
+
+            logger.info("Fetching stations")
+
+            data = self.scraper.get(
+                self.GetEnglishUrl()+"/stations.json",
+                headers=HEADERS,
+                allow_redirects=True
+            )
+            logger.info(self.GetEnglishUrl()+"/stations.json")
+            logger.info(str(data.text))
+
+            data = orjson.loads(data.text)
+
+            for station in data:
+                final_data.append({
+                    "id": station.get("id"),
+                    "type": "station",
+                    "identifier": station.get("name"),
+                    "stream": self.ConvertStreamUrl(station.get("stream_url"))
+                })
+
+            return final_data
+
+        except Exception as e:
+            logger.error(traceback.format_exc())
+            return (final_data)
+        return ([])
+
+    def GetStationMatchId(self, stationId):
+        stationSet = None
+
+        try:
+            data = self.scraper.get(
+                self.GetEnglishUrl()+"/stations.json",
+                headers=HEADERS,
+                allow_redirects=True
+            )
+
+            logger.info(self.GetEnglishUrl()+"/stations.json")
+            logger.info(str(data.text))
+            data = orjson.loads(data.text)
+
+            for station in data:
+                if station.get("id") == stationId:
+                    stationSet = deep_get(station, "match")
+
+        except Exception as e:
+            logger.error(traceback.format_exc())
+        return stationSet
+
+    def GetMatches(self, getFinished=False, progress_callback=None, cancel_event=None):
         final_data = []
 
         try:
@@ -193,9 +257,9 @@ class ChallongeDataProvider(TournamentDataProvider):
                 headers=HEADERS,
                 allow_redirects=True
             )
-            print(self.GetEnglishUrl()+".json")
-            print(data.text)
-            data = json.loads(data.text)
+            logger.info(self.GetEnglishUrl()+".json")
+            logger.info(str(data.text))
+            data = orjson.loads(data.text)
 
             all_matches = self.GetAllMatchesFromData(data)
 
@@ -211,12 +275,19 @@ class ChallongeDataProvider(TournamentDataProvider):
                 final_data.append(self.ParseMatchData(match))
 
             final_data.reverse()
+
+            if progress_callback:
+                progress_callback.emit({
+                    "progress": 1,
+                    "totalPages": 1,
+                    "sets": final_data
+                })
         except Exception as e:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
         return final_data
 
-    def GetTournamentPhases(self, progress_callback=None):
+    def GetTournamentPhases(self, progress_callback=None, cancel_event=None):
         phases = []
 
         try:
@@ -224,7 +295,7 @@ class ChallongeDataProvider(TournamentDataProvider):
                 self.GetEnglishUrl()+".json",
                 headers=HEADERS
             )
-            data = json.loads(data.text)
+            data = orjson.loads(data.text)
 
             if len(deep_get(data, "groups", [])) > 0:
                 phaseObj = {
@@ -254,18 +325,18 @@ class ChallongeDataProvider(TournamentDataProvider):
                 ]
             })
         except:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
         return phases
 
-    def GetTournamentPhaseGroup(self, id, progress_callback=None):
+    def GetTournamentPhaseGroup(self, id, progress_callback=None, cancel_event=None):
         finalData = {}
         try:
             data = self.scraper.get(
                 self.GetEnglishUrl()+".json",
                 headers=HEADERS
             )
-            data = json.loads(data.text)
+            data = orjson.loads(data.text)
 
             entrants = self.GetAllEntrantsFromData(data, id)
             entrants.sort(key=lambda e: e.get("seed"))
@@ -436,7 +507,7 @@ class ChallongeDataProvider(TournamentDataProvider):
             losersRoundKeys.sort(key=lambda x: int(x), reverse=False)
 
             if len(losersRoundKeys) % 2 == 1:
-                print(lr1ReverseMap)
+                logger.info(str(lr1ReverseMap))
 
                 for i, s in enumerate(rounds[int(losersRoundKeys[-2])]):
                     if len(lr1ReverseMap) > i and lr1ReverseMap[i] == True:
@@ -472,7 +543,7 @@ class ChallongeDataProvider(TournamentDataProvider):
 
             finalData["sets"] = rounds
         except:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
         return finalData
 
@@ -492,11 +563,11 @@ class ChallongeDataProvider(TournamentDataProvider):
                         match["phase"] = "Round Robin"
                     else:
                         match["phase"] = "Bracket"
-                    if r == len(matches.values()) - 1:
-                        if m == 0:
-                            match["isGF"] = True
-                        elif m == 1:
-                            match["isGFR"] = True
+                        if r == len(matches.values()) - 1:
+                            if m == 0:
+                                match["isGF"] = True
+                            elif m == 1:
+                                match["isGFR"] = True
                     match["round_name"] = ChallongeDataProvider.TranslateRoundName(
                         match, rounds, CHALLONGE_BRACKET_TYPE(data.get("requested_plotter")))
                     all_matches.append(match)
@@ -509,22 +580,45 @@ class ChallongeDataProvider(TournamentDataProvider):
                 groups = [groups[groupId]]
 
             for group in groups:
-                rounds = deep_get(group, "rounds", {})
+                rounds = deep_get(group, "rounds", [])
                 matches = deep_get(group, "matches_by_round", {})
+
+                roundNumbers = [r.get("number") for r in rounds]
+                maxRoundNumber = max(roundNumbers)
+                minRoundNumber = min(roundNumbers)
 
                 for round in matches.values():
                     for match in round:
                         # match["round_name"] = next(
                         #     r["title"] for r in rounds if r["number"] == match.get("round"))
                         match["phase"] = group.get("name")
-                        match["round_name"] = ChallongeDataProvider.TranslateRoundName(
-                            match, rounds, CHALLONGE_BRACKET_TYPE(group.get("requested_plotter")))
+
+                        if int(match.get("round")) >= 0:
+                            match["round_name"] = TSHLocaleHelper.matchNames.get(
+                                "winners_round").format(abs(match.get("round")))
+                        else:
+                            match["round_name"] = TSHLocaleHelper.matchNames.get(
+                                "losers_round").format(abs(match.get("round")))
+
+                        # For final rounds in group, use "Qualifier"
+                        if int(match.get("round")) in [maxRoundNumber, minRoundNumber]:
+
+                            match["round_name"] = TSHLocaleHelper.matchNames.get("qualifier").format(
+                                self.CleanInputString(TSHLocaleHelper.phaseNames.get("final_stage")))
+                            match["winnerProgression"] = TSHLocaleHelper.phaseNames.get(
+                                "final_stage")
+
                         all_matches.append(match)
 
         return all_matches
 
+    def GetStreamQueue(self, progress_callback=None, cancel_event=None):
+        return {}
+
     def GetStreamMatchId(self, streamName):
         sets = self.GetMatches()
+
+        logger.debug(sets)
 
         streamSet = next(
             (s for s in sets if s.get("stream", None) ==
@@ -533,6 +627,28 @@ class ChallongeDataProvider(TournamentDataProvider):
         )
 
         return streamSet
+
+    def GetStationMatchsId(self, stationId):
+        sets = []
+
+        try:
+            sets = [s for s in self.GetMatches() if s.get("station_id")
+                    == stationId]
+
+            logger.debug(stationId)
+            logger.debug(f"Station sets: {len(sets)}")
+
+            queued_sets = [s for s in self.GetMatches() if s.get("station_id_queued")
+                           == stationId]
+
+            sets = sets + queued_sets
+        except Exception as e:
+            logger.error(traceback.format_exc())
+
+        return sets
+
+    def GetFutureMatchesList(self, setsId, progress_callback, cancel_event):
+        return setsId
 
     def GetUserMatchId(self, user):
         sets = self.GetMatches()
@@ -590,7 +706,7 @@ class ChallongeDataProvider(TournamentDataProvider):
                 match, "queued_for_station.stream_url", None)
 
         if stream:
-            stream = stream.split("twitch.tv/")[1].replace("/", "")
+            stream = self.ConvertStreamUrl(stream)
 
         team1losers = False
         team2losers = False
@@ -638,6 +754,9 @@ class ChallongeDataProvider(TournamentDataProvider):
                 self.ParseEntrant(deep_get(match, "player2")).get("players"),
             ],
             "stream": stream,
+            "station": deep_get(match, "station.name", None),
+            "station_id": deep_get(match, "station.id", None),
+            "station_id_queued": deep_get(match, "queued_for_station.id", None),
             "is_current_stream_game": True if deep_get(match, "station.stream_url", None) else False,
             "team1score": scores[0],
             "team2score": scores[1],
@@ -655,13 +774,13 @@ class ChallongeDataProvider(TournamentDataProvider):
         worker = Worker(self.GetEntrantsWorker)
         self.threadpool.start(worker)
 
-    def GetEntrantsWorker(self, progress_callback):
+    def GetEntrantsWorker(self, progress_callback, cancel_event):
         try:
             data = self.scraper.get(
                 self.GetEnglishUrl()+".json",
                 headers=HEADERS
             )
-            data = json.loads(data.text)
+            data = orjson.loads(data.text)
 
             entrants = self.GetAllEntrantsFromData(data)
             players = []
@@ -672,7 +791,7 @@ class ChallongeDataProvider(TournamentDataProvider):
 
             TSHPlayerDB.AddPlayers(players)
         except Exception as e:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
     def ParseEntrant(self, data):
         # Here we're only supporting a single player per entrant
@@ -719,7 +838,7 @@ class ChallongeDataProvider(TournamentDataProvider):
 
         return (final_data)
 
-    def GetStandings(self, playerNumber, progress_callback):
+    def GetStandings(self, playerNumber, progress_callback, cancel_event):
         final_data = []
 
         try:
@@ -728,7 +847,7 @@ class ChallongeDataProvider(TournamentDataProvider):
                 headers=HEADERS
             )
 
-            data = json.loads(data.text)
+            data = orjson.loads(data.text)
 
             all_matches = self.GetAllMatchesFromData(data)
 
@@ -763,16 +882,16 @@ class ChallongeDataProvider(TournamentDataProvider):
 
             return final_data
         except Exception as e:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
-    def GetLastSets(self, playerID, playerNumber, callback, progress_callback):
+    def GetLastSets(self, playerID, playerNumber, callback, progress_callback, cancel_event):
         try:
             data = self.scraper.get(
                 self.GetEnglishUrl()+".json",
                 headers=HEADERS
             )
 
-            data = json.loads(data.text)
+            data = orjson.loads(data.text)
 
             set_data = []
 
@@ -817,5 +936,5 @@ class ChallongeDataProvider(TournamentDataProvider):
             callback.emit(
                 {"playerNumber": playerNumber, "last_sets": set_data})
         except Exception as e:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
             callback.emit({"playerNumber": playerNumber, "last_sets": []})

@@ -1,9 +1,11 @@
 import traceback
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import *
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
+from qtpy.QtCore import *
+from loguru import logger
 
 from src.TSHTournamentDataProvider import TSHTournamentDataProvider
+
 
 class TSHSelectSetWindow(QDialog):
     def __init__(self, parent: QWidget) -> None:
@@ -18,7 +20,8 @@ class TSHSelectSetWindow(QDialog):
 
         self.proxyModel = QSortFilterProxyModel()
         self.proxyModel.setFilterKeyColumn(-1)
-        self.proxyModel.setFilterCaseSensitivity(False)
+        self.proxyModel.setFilterCaseSensitivity(
+            Qt.CaseSensitivity.CaseInsensitive)
 
         def filterList(text):
             self.proxyModel.setFilterFixedString(text)
@@ -30,17 +33,20 @@ class TSHSelectSetWindow(QDialog):
 
         options = QHBoxLayout()
 
-        self.showFinished = QCheckBox(QApplication.translate("app", "Show completed sets"))
+        self.showFinished = QCheckBox(
+            QApplication.translate("app", "Show completed sets"))
         options.addWidget(self.showFinished)
         self.showFinished.clicked.connect(lambda check: self.LoadSets())
-        self.showCompletePairs = QCheckBox(QApplication.translate("app", "Show complete pairs"))
+        self.showCompletePairs = QCheckBox(
+            QApplication.translate("app", "Show complete pairs"))
         options.addWidget(self.showCompletePairs)
         self.showCompletePairs.clicked.connect(lambda check: self.LoadSets())
 
         layout.layout().addLayout(options)
 
         self.startggSetSelectionItemList = QTableView()
-        self.startggSetSelectionItemList.doubleClicked.connect(lambda x: self.LoadSelectedSet())
+        self.startggSetSelectionItemList.doubleClicked.connect(
+            lambda x: self.LoadSelectedSet())
         self.startggSetSelectionItemList.installEventFilter(self)
         layout.addWidget(self.startggSetSelectionItemList)
         self.startggSetSelectionItemList.setSortingEnabled(True)
@@ -49,8 +55,9 @@ class TSHSelectSetWindow(QDialog):
         self.startggSetSelectionItemList.setEditTriggers(
             QAbstractItemView.NoEditTriggers)
         self.startggSetSelectionItemList.setModel(self.proxyModel)
-        self.startggSetSelectionItemList.setColumnHidden(5, True)
-        self.startggSetSelectionItemList.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.startggSetSelectionItemList.setColumnHidden(6, True)
+        self.startggSetSelectionItemList.horizontalHeader(
+        ).setSectionResizeMode(QHeaderView.Stretch)
         self.startggSetSelectionItemList.resizeColumnsToContents()
 
         btOk = QPushButton("OK")
@@ -59,43 +66,64 @@ class TSHSelectSetWindow(QDialog):
             lambda x: self.LoadSelectedSet()
         )
 
+        self.labelStatus = QLabel()
+        layout.addWidget(self.labelStatus)
+
         self.resize(1200, 500)
 
         qr = self.frameGeometry()
-        cp = QDesktopWidget().availableGeometry().center()
+        cp = QApplication.primaryScreen().availableGeometry().center()
         qr.moveCenter(cp)
         self.move(qr.topLeft())
 
-        TSHTournamentDataProvider.instance.signals.get_sets_finished.connect(self.SetSets)
-    
+        TSHTournamentDataProvider.instance.signals.sets_data_updated.connect(
+            self.SetsUpdated)
+
+        self.model = QStandardItemModel()
+
     def eventFilter(self, obj, event):
         if obj is self.startggSetSelectionItemList and event.type() == QEvent.KeyPress:
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 self.LoadSelectedSet()
         return super().eventFilter(obj, event)
-    
+
     def LoadSets(self):
         self.proxyModel.setSourceModel(QStandardItemModel())
-        TSHTournamentDataProvider.instance.LoadSets(showFinished=self.showFinished.checkState()!=0)
-    
-    def SetSets(self, sets):
-        print("Got sets", len(sets))
-        model = QStandardItemModel()
-        horizontal_labels = ["Stream", "Wave", "Title", "Player 1", "Player 2"]
+        TSHTournamentDataProvider.instance.LoadSets(
+            showFinished=self.showFinished.isChecked())
+        self.model.clear()
+        self.labelStatus.setText(
+            QApplication.translate("app", "Fetching sets..."))
+
+    def SetsUpdated(self, data):
+        if data == None:
+            return
+
+        if data["progress"] >= data["totalPages"]:
+            self.labelStatus.setText("")
+        else:
+            self.labelStatus.setText(
+                f"Fetching sets...({data['progress']}/{data['totalPages']})")
+
+        horizontal_labels = ["Stream", "Station",
+                             "Wave", "Title", "Player 1", "Player 2"]
         horizontal_labels[0] = QApplication.translate("app", "Stream")
-        horizontal_labels[1] = QApplication.translate("app", "Phase")
-        horizontal_labels[2] = QApplication.translate("app", "Match")
-        horizontal_labels[3] = QApplication.translate(
-            "app", "Player {0}").format(1)
+        horizontal_labels[1] = QApplication.translate("app", "Station")
+        horizontal_labels[2] = QApplication.translate("app", "Phase")
+        horizontal_labels[3] = QApplication.translate("app", "Match")
         horizontal_labels[4] = QApplication.translate(
+            "app", "Player {0}").format(1)
+        horizontal_labels[5] = QApplication.translate(
             "app", "Player {0}").format(2)
-        model.setHorizontalHeaderLabels(horizontal_labels)
+        self.model.setHorizontalHeaderLabels(horizontal_labels)
+
+        sets = data["sets"]
 
         if sets is not None:
             for s in sets:
                 dataItem = QStandardItem(str(s.get("id")))
                 dataItem.setData(s, Qt.ItemDataRole.UserRole)
-                
+
                 if self.showCompletePairs.isChecked():
                     if s.get("p1_name") == "" or s.get("p2_name") == "":
                         continue
@@ -111,10 +139,12 @@ class TSHSelectSetWindow(QDialog):
                             player_names[t] += " "+QApplication.translate(
                                 "punctuation", "(")+", ".join(pnames)+QApplication.translate("punctuation", ")")
                 except Exception as e:
-                    traceback.print_exc()
+                    logger.error(traceback.format_exc())
 
-                model.appendRow([
+                self.model.appendRow([
                     QStandardItem(s.get("stream", "")),
+                    QStandardItem(str(s.get("station", "")) if s.get(
+                        "station", "") != None else ""),
                     QStandardItem(s.get("tournament_phase", "")),
                     QStandardItem(s["round_name"]),
                     QStandardItem(player_names[0]),
@@ -122,21 +152,31 @@ class TSHSelectSetWindow(QDialog):
                     dataItem
                 ])
 
-        self.proxyModel.setSourceModel(model)
-        self.startggSetSelectionItemList.setColumnHidden(5, True)
+        self.proxyModel.setSourceModel(self.model)
+        self.startggSetSelectionItemList.setColumnHidden(6, True)
         self.startggSetSelectionItemList.resizeColumnsToContents()
-        self.startggSetSelectionItemList.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.startggSetSelectionItemList.horizontalHeader(
+        ).setSectionResizeMode(QHeaderView.Stretch)
         QApplication.processEvents()
         self.resize(self.width(), self.height())
-    
+
     def LoadSelectedSet(self):
         row = 0
 
         if len(self.startggSetSelectionItemList.selectionModel().selectedRows()) > 0:
-            row = self.startggSetSelectionItemList.selectionModel().selectedRows()[0].row()
-        setId = self.startggSetSelectionItemList.model().index(row, 5).data(Qt.ItemDataRole.UserRole)
+            row = self.startggSetSelectionItemList.selectionModel().selectedRows()[
+                0].row()
+        setId = self.startggSetSelectionItemList.model().index(
+            row, 6).data(Qt.ItemDataRole.UserRole)
         self.close()
 
         if setId:
             setId["auto_update"] = "set"
             self.parent().signals.NewSetSelected.emit(setId)
+
+        if TSHTournamentDataProvider.instance.setLoadingWorker:
+            # If there was a previous set loading worker,
+            # block its signals
+            TSHTournamentDataProvider.instance.setLoadingWorker.cancel()
+            TSHTournamentDataProvider.instance.setLoadingWorker.signals.blockSignals(
+                True)

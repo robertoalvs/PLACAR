@@ -28,14 +28,14 @@ LoadEverything().then(() => {
     let data = event.data;
     let oldData = event.oldData;
 
-    let isTeams = Object.keys(data.score.team["1"].player).length > 1;
+    let isTeams = Object.keys(data.score[window.scoreboardNumber].team["1"].player).length > 1;
 
     if (
       oldData.score == null ||
-      Object.keys(oldData.score.team["1"].player).length !=
-        Object.keys(data.score.team["1"].player).length
+      Object.keys(oldData.score[window.scoreboardNumber].team["1"].player).length !=
+        Object.keys(data.score[window.scoreboardNumber].team["1"].player).length
     ) {
-      if (Object.keys(data.score.team["1"].player).length == 1) {
+      if (Object.keys(data.score[window.scoreboardNumber].team["1"].player).length == 1) {
         gsap
           .timeline()
           .fromTo(
@@ -65,8 +65,8 @@ LoadEverything().then(() => {
     }
 
     for (const [t, team] of [
-      data.score.team["1"],
-      data.score.team["2"],
+      data.score[window.scoreboardNumber].team["1"],
+      data.score[window.scoreboardNumber].team["2"],
     ].entries()) {
       let teamName = "";
 
@@ -110,6 +110,7 @@ LoadEverything().then(() => {
             $(`.t${t + 1}.p${p + 1} .flagcountry`),
             player.country.asset
               ? `
+                <div class='flagname'>${player.country.code}</div>
                 <div class='flag' style='background-image: url(../../${player.country.asset.toLowerCase()})'></div>
               `
               : ""
@@ -119,6 +120,7 @@ LoadEverything().then(() => {
             $(`.t${t + 1}.p${p + 1} .flagstate`),
             player.state.asset
               ? `
+                <div class='flagname'>${player.state.code}</div>
                 <div class='flag' style='background-image: url(../../${player.state.asset})'></div>
               `
               : ""
@@ -143,18 +145,21 @@ LoadEverything().then(() => {
             `<div class='sponsor-logo' style='background-image: url(../../${player.sponsor_logo})'></div>`
           );
         }
+        if(team.color) {
+          document.querySelector(':root').style.setProperty(`--p${t + 1}-score-bg-color`, team.color);
+        }
       }
     }
 
     let phaseTexts = [];
-    if (data.score.phase) phaseTexts.push(data.score.phase);
-    if (data.score.best_of_text) phaseTexts.push(data.score.best_of_text);
+    if (data.score[window.scoreboardNumber].phase) phaseTexts.push(data.score[window.scoreboardNumber].phase);
+    if (data.score[window.scoreboardNumber].best_of_text) phaseTexts.push(data.score[window.scoreboardNumber].best_of_text);
 
     SetInnerHtml($(".info.material_container .phase"), phaseTexts.join(" - "));
     SetInnerHtml(
       $(".info.material_container .tournament_name"),
       data.tournamentInfo.tournamentName
     );
-    SetInnerHtml($(".info.material_container .match"), data.score.match);
+    SetInnerHtml($(".info.material_container .match"), data.score[window.scoreboardNumber].match);
   };
 });

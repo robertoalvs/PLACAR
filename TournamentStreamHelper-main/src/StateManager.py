@@ -1,29 +1,38 @@
 import os
-import json
-import copy
+import orjson
 import traceback
 from deepdiff import DeepDiff, extract
+from functools import partial
 import shutil
 import threading
 import requests
 from PIL import Image
-
-from .Helpers.TSHDictHelper import deep_get, deep_set, deep_unset
+import time
+from loguru import logger
+from .Helpers.TSHDictHelper import deep_get, deep_set, deep_unset, deep_clone
+from .SettingsManager import SettingsManager
 
 
 class StateManager:
     lastSavedState = {}
     state = {}
     saveBlocked = 0
+    webServer = None
+    changedKeys = []
 
-    lock = threading.Lock()
+    lock = threading.RLock()
     threads = []
+    loop = None
 
     def BlockSaving():
         StateManager.saveBlocked += 1
-    
+        logger.critical(
+            "Initial Block - Current Blocking Status: " + str(StateManager.saveBlocked))
+
     def ReleaseSaving():
         StateManager.saveBlocked -= 1
+        logger.critical(
+            "Release Block - Current Blocking Status: " + str(StateManager.saveBlocked))
         if StateManager.saveBlocked == 0:
             StateManager.SaveState()
 
@@ -32,64 +41,103 @@ class StateManager:
             with StateManager.lock:
                 StateManager.threads = []
 
-                def ExportAll():
-                    with open("./out/program_state.json", 'w', encoding='utf-8', buffering=8192) as file:
-                        # print("SaveState")
-                        json.dump(StateManager.state, file, indent=4, sort_keys=False)
+                def ExportAll(ref_diff):
+                    with open("./out/program_state.json", 'wb', buffering=8192) as file:
+                        # logger.info("SaveState")
+                        StateManager.state.update({"timestamp": time.time()})
+                        file.write(orjson.dumps(
+                            StateManager.state, option=orjson.OPT_NON_STR_KEYS | orjson.OPT_INDENT_2))
+                        StateManager.state.pop("timestamp")
 
-                    StateManager.ExportText(StateManager.lastSavedState)
-                    StateManager.lastSavedState = copy.deepcopy(StateManager.state)
+                    if not SettingsManager.Get("general.disable_export", False):
+                        StateManager.ExportText(
+                            StateManager.lastSavedState, ref_diff)
+                    StateManager.lastSavedState = deep_clone(
+                        StateManager.state)
 
-                exportThread = threading.Thread(target=ExportAll)
-                StateManager.threads.append(exportThread)
-                exportThread.start()
+                # logger.debug(StateManager.changedKeys)
 
-                for t in StateManager.threads:
-                    t.join()
+                diff = DeepDiff(
+                    StateManager.lastSavedState,
+                    StateManager.state,
+                    include_paths=StateManager.changedKeys
+                )
+
+                StateManager.changedKeys = []
+
+                if len(diff) > 0:
+                    try:
+                        if StateManager.webServer is not None:
+                            StateManager.webServer.emit(
+                                'program_state', StateManager.state)
+                    except Exception as e:
+                        logger.error(traceback.format_exc())
+
+                    exportThread = threading.Thread(
+                        target=partial(ExportAll, ref_diff=diff))
+                    StateManager.threads.append(exportThread)
+                    exportThread.start()
+
+                    for t in StateManager.threads:
+                        t.join()
 
     def LoadState():
         try:
-            with open("./out/program_state.json", 'r', encoding='utf-8') as file:
-                StateManager.state = json.load(file)
-        except:
+            with open("./out/program_state.json", 'rb') as file:
+                StateManager.state = orjson.loads(file.read())
+        except Exception as e:
+            logger.error(traceback.format_exc())
             StateManager.state = {}
             StateManager.SaveState()
 
     def Set(key: str, value):
-        oldState = copy.deepcopy(StateManager.state)
+        with StateManager.lock:
+            # StateManager.lastSavedState = deep_clone(StateManager.state)
 
-        deep_set(StateManager.state, key, value)
+            deep_set(StateManager.state, key, value)
 
-        if StateManager.saveBlocked == 0:
-            StateManager.SaveState()
-            # StateManager.ExportText(oldState)
+            final_key = "root"
+            for k in key.split("."):
+                final_key += f"['{k}']"
+
+            StateManager.changedKeys.append(final_key)
+
+            if StateManager.saveBlocked == 0:
+                StateManager.SaveState()
+                # StateManager.ExportText(oldState)
 
     def Unset(key: str):
-        oldState = copy.deepcopy(StateManager.state)
-        deep_unset(StateManager.state, key)
-        if StateManager.saveBlocked == 0:
-            StateManager.SaveState()
-            # StateManager.ExportText(oldState)
+        with StateManager.lock:
+            # StateManager.lastSavedState = deep_clone(StateManager.state)
+            deep_unset(StateManager.state, key)
+
+            final_key = "root"
+            for k in key.split("."):
+                final_key += f"['{k}']"
+            StateManager.changedKeys.append(final_key)
+
+            if StateManager.saveBlocked == 0:
+                StateManager.SaveState()
+                # StateManager.ExportText(oldState)
 
     def Get(key: str, default=None):
         return deep_get(StateManager.state, key, default)
 
-    def ExportText(oldState):
-        # print("ExportState")
-        diff = DeepDiff(oldState, StateManager.state)
-        # print(diff)
+    def ExportText(oldState, diff):
+        # logger.info("ExportState")
+        # logger.info(diff)
 
         mergedDiffs = list(diff.get("values_changed", {}).items())
         mergedDiffs.extend(list(diff.get("type_changes", {}).items()))
 
-        # print(mergedDiffs)
+        # logger.info(mergedDiffs)
 
         for changeKey, change in mergedDiffs:
             # Remove "root[" from start and separate keys
             filename = "/".join(changeKey[5:].replace(
                 "'", "").replace("]", "").replace("/", "_").split("["))
 
-            # print(filename)
+            # logger.info(filename)
 
             if change.get("new_type") == type(None):
                 StateManager.RemoveFilesDict(
@@ -107,22 +155,29 @@ class StateManager:
             filename = "/".join(key[5:].replace(
                 "'", "").replace("]", "").replace("/", "_").split("["))
 
-            # print("Removed:", filename, item)
+            # logger.info("Removed:", filename, item)
 
             StateManager.RemoveFilesDict(filename, item)
 
         addedKeys = diff.get("dictionary_item_added", {})
 
         for key in addedKeys:
-            item = extract(StateManager.state, key)
+            try:
+                item = extract(StateManager.state, key)
 
-            # Remove "root[" from start and separate keys
-            path = "/".join(key[5:].replace(
-                "'", "").replace("]", "").replace("/", "_").split("["))
+                # Remove "root[" from start and separate keys
+                path = "/".join(key[5:].replace(
+                    "'", "").replace("]", "").replace("/", "_").split("["))
+                # Remove "root[" from start and separate keys
+                path = "/".join(key[5:].replace(
+                    "'", "").replace("]", "").replace("/", "_").split("["))
 
-            # print("Added:", path, item)
+                # logger.info("Added:", path, item)
+                # logger.info("Added:", path, item)
 
-            StateManager.CreateFilesDict(path, item)
+                StateManager.CreateFilesDict(path, item)
+            except Exception as e:
+                logger.error(traceback.format_exc())
 
     def CreateFilesDict(path, di):
         pathdirs = "/".join(path.split("/")[0:-1])
@@ -135,25 +190,28 @@ class StateManager:
                 StateManager.CreateFilesDict(
                     path+"/"+str(k).replace("/", "_"), i)
         else:
-            # print("try to add: ", path)
+            # logger.info("try to add: ", path)
             if type(di) == str and di.startswith("./"):
                 if os.path.exists(f"./out/{path}" + "." + di.rsplit(".", 1)[-1]):
                     try:
-                        os.remove(f"./out/{path}" + "." + di.rsplit(".", 1)[-1])
+                        os.remove(f"./out/{path}" + "." +
+                                  di.rsplit(".", 1)[-1])
                     except Exception as e:
-                        print(traceback.format_exc())
+                        logger.error(traceback.format_exc())
                 if os.path.exists(di):
                     try:
-                        os.link(os.path.abspath(di), f"./out/{path}" + "." + di.rsplit(".", 1)[-1])
+                        os.link(os.path.abspath(di),
+                                f"./out/{path}" + "." + di.rsplit(".", 1)[-1])
                     except Exception as e:
-                        print(traceback.format_exc())
+                        logger.error(traceback.format_exc())
             elif type(di) == str and di.startswith("http") and (di.endswith(".png") or di.endswith(".jpg")):
                 try:
                     if os.path.exists(f"./out/{path}" + "." + di.rsplit(".", 1)[-1]):
                         try:
-                            os.remove(f"./out/{path}" + "." + di.rsplit(".", 1)[-1])
+                            os.remove(f"./out/{path}" +
+                                      "." + di.rsplit(".", 1)[-1])
                         except Exception as e:
-                            print(traceback.format_exc())
+                            logger.error(traceback.format_exc())
 
                     def downloadImage(url, dlpath):
                         try:
@@ -169,7 +227,7 @@ class StateManager:
                                     ".", 1)[0]+".png", format="png")
                                 os.remove(dlpath)
                         except Exception as e:
-                            print(traceback.format_exc())
+                            logger.error(traceback.format_exc())
 
                     t = threading.Thread(
                         target=downloadImage,
@@ -181,7 +239,7 @@ class StateManager:
                     StateManager.threads.append(t)
                     t.start()
                 except Exception as e:
-                    print(traceback.format_exc())
+                    logger.error(traceback.format_exc())
             else:
                 with open(f"./out/{path}.txt", 'w', encoding='utf-8') as file:
                     file.write(str(di))
@@ -198,26 +256,26 @@ class StateManager:
                 try:
                     removeFile = f"./out/{path}" + \
                         "." + di.rsplit(".", 1)[-1]
-                    # print("try to remove: ", removeFile)
+                    # logger.info("try to remove: ", removeFile)
                     if os.path.exists(removeFile):
                         os.remove(removeFile)
                 except:
-                    print(traceback.format_exc())
+                    logger.error(traceback.format_exc())
             else:
                 try:
                     removeFile = f"./out/{path}.txt"
-                    # print("try to remove: ", removeFile)
+                    # logger.info("try to remove: ", removeFile)
                     if os.path.exists(removeFile):
                         os.remove(removeFile)
                 except:
-                    print(traceback.format_exc())
+                    logger.error(traceback.format_exc())
 
         try:
-            # print("Remove path", f"./out/{path}")
+            # logger.info("Remove path", f"./out/{path}")
             if os.path.exists(f"./out/{path}"):
                 shutil.rmtree(f"./out/{path}")
         except:
-            print(traceback.format_exc())
+            logger.error(traceback.format_exc())
 
 
 if not os.path.exists("./out"):

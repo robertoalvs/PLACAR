@@ -14,13 +14,14 @@ LoadEverything().then(() => {
   Update = async (event) => {
     let data = event.data;
     let oldData = event.oldData;
+
     if (
       !oldData.score ||
-      JSON.stringify(data.score.last_sets) !=
-        JSON.stringify(oldData.score.last_sets)
+      JSON.stringify(data.score[window.scoreboardNumber].last_sets) !=
+        JSON.stringify(oldData.score[window.scoreboardNumber].last_sets)
     ) {
       sets_html = "";
-      Object.values(data.score.last_sets[window.PLAYER])
+      Object.values(data.score[window.scoreboardNumber].last_sets[window.PLAYER])
         .slice(0, 3)
         .reverse()
         .forEach((sets, s) => {
@@ -45,13 +46,13 @@ LoadEverything().then(() => {
           </div>
         </div>`;
         });
-      if (Object.values(data.score.last_sets[window.PLAYER]).length > 0) {
+      if (Object.values(data.score[window.scoreboardNumber].last_sets[window.PLAYER]).length > 0) {
         sets_html +=
           '<div class="bracket_line"><div class="line_arrow"></div></div>';
       }
       $(".player1_content").html(sets_html);
 
-      for (const [s, sets] of Object.values(data.score.last_sets[window.PLAYER])
+      for (const [s, sets] of Object.values(data.score[window.scoreboardNumber].last_sets[window.PLAYER])
         .slice(0, 3)
         .reverse()
         .entries()) {
@@ -92,17 +93,18 @@ LoadEverything().then(() => {
           $(`.player1_content .set${s + 1} .p2 .score`),
           sets.oponent_score
         );
-        gsap.from(
+        startingAnimation.from(
           $(`.set${s + 1}`),
           { x: -100, autoAlpha: 0, duration: 0.4 },
           0.2 + 0.2 * s
         );
       }
 
-      gsap.fromTo(
+      startingAnimation.fromTo(
         $(".bracket_line"),
         { width: 0 },
-        { width: "calc(100% + 240px)", duration: 1, ease: "Power2.easeOut" }
+        { width: "calc(100% + 240px)", duration: 1, ease: "Power2.easeOut" },
+        0
       );
     }
   };

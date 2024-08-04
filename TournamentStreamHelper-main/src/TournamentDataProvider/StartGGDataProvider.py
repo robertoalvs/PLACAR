@@ -1,22 +1,24 @@
 from collections import Counter
 import re
 from time import sleep
-from PyQt5.QtCore import *
-from PyQt5.QtGui import QStandardItem, QStandardItemModel
+from qtpy.QtCore import *
+from qtpy.QtGui import QStandardItem, QStandardItemModel
 import requests
 import os
 import traceback
+from loguru import logger
 from ..Helpers.TSHCountryHelper import TSHCountryHelper
 from ..Helpers.TSHDictHelper import deep_get
 from ..TSHGameAssetManager import TSHGameAssetManager
 from ..TSHPlayerDB import TSHPlayerDB
 from .TournamentDataProvider import TournamentDataProvider
-import json
+import orjson
 from ..Helpers.TSHLocaleHelper import TSHLocaleHelper
 from ..TSHBracket import is_power_of_two
 
 from ..Workers import Worker
 import sys
+
 
 class StartGGDataProvider(TournamentDataProvider):
     SetsQuery = None
@@ -32,6 +34,10 @@ class StartGGDataProvider(TournamentDataProvider):
     TournamentPhasesQuery = None
     TournamentPhaseGroupQuery = None
     StreamQueueQuery = None
+    StationsQuery = None
+    StationSetsQuery = None
+    # request for a single set with only info relevant for a set that is yet to be played
+    FutureSetQuery = None
 
     player_seeds = {}
 
@@ -40,18 +46,37 @@ class StartGGDataProvider(TournamentDataProvider):
         self.name = "StartGG"
         self.getMatchThreadPool = QThreadPool()
         self.getRecentSetsThreadPool = QThreadPool()
+        self.getStationMatchesThreadPool = QThreadPool()
 
-    def GetTournamentData(self, progress_callback=None):
+    # Queries the provided URL until a proper 200 status code has been provided back
+    #
+    # This should work fine in theory unless an API restriction is added
+    def QueryRequests(self, url=None, type=None, headers={}, jsonParams=None, params=None):
+        requestCode = 0
+        data = None
+        headers.update({
+            "client-version": "20",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Linux; Android 6.0; Nexus 5 Build/MRA58N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36"
+        })
+        while requestCode != 200:
+            data = type(
+                url,
+                headers=headers,
+                json=jsonParams,
+                params=params
+            )
+            requestCode = data.status_code
+        return orjson.loads(data.text)
+
+    def GetTournamentData(self, progress_callback=None, cancel_event=None):
         finalData = {}
 
         try:
-            data = requests.post(
+            data = self.QueryRequests(
                 "https://www.start.gg/api/-/gql",
-                headers={
-                    "client-version": "20",
-                    'Content-Type': 'application/json'
-                },
-                json={
+                type=requests.post,
+                jsonParams={
                     "operationName": "TournamentDataQuery",
                     "variables": {
                         "eventSlug": self.url.split("start.gg/")[1]
@@ -59,8 +84,6 @@ class StartGGDataProvider(TournamentDataProvider):
                     "query": StartGGDataProvider.TournamentDataQuery
                 }
             )
-
-            data = json.loads(data.text)
 
             videogame = deep_get(data, "data.event.videogame.id", None)
             if videogame:
@@ -80,7 +103,7 @@ class StartGGDataProvider(TournamentDataProvider):
             finalData["startAt"] = deep_get(
                 data, "data.event.tournament.startAt", "")
         except:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
         return finalData
 
@@ -88,13 +111,10 @@ class StartGGDataProvider(TournamentDataProvider):
         url = None
 
         try:
-            data = requests.post(
+            data = self.QueryRequests(
                 "https://www.start.gg/api/-/gql",
-                headers={
-                    "client-version": "20",
-                    'Content-Type': 'application/json'
-                },
-                json={
+                type=requests.post,
+                jsonParams={
                     "operationName": "TournamentIconQuery",
                     "variables": {
                         "eventSlug": self.url.split("start.gg/")[1]
@@ -113,39 +133,33 @@ class StartGGDataProvider(TournamentDataProvider):
                     '''
                 }
             )
-            data = json.loads(data.text)
 
             images = deep_get(data, "data.event.tournament.images", [])
 
             if len(images) > 0:
                 url = images[0]["url"]
         except:
-            traceback.print_exc()
-        
+            logger.error(traceback.format_exc())
+
         return url
-    
-    def GetTournamentPhases(self, progress_callback=None):
+
+    def GetTournamentPhases(self, progress_callback=None, cancel_event=None):
         phases = []
 
         try:
-            data = requests.post(
+            data = self.QueryRequests(
                 "https://www.start.gg/api/-/gql",
-                headers={
-                    "client-version": "20",
-                    'Content-Type': 'application/json'
-                },
-                json={
+                type=requests.post,
+                jsonParams={
                     "operationName": "TournamentPhasesQuery",
                     "variables": {
                         "eventSlug": self.url.split("start.gg/")[1]
                     },
                     "query": StartGGDataProvider.TournamentPhasesQuery
                 }
-
             )
 
-            data = json.loads(data.text)
-            print(data)
+            logger.info(data)
 
             for phase in deep_get(data, "data.event.phases", []):
                 phaseObj = {
@@ -163,21 +177,18 @@ class StartGGDataProvider(TournamentDataProvider):
 
                 phases.append(phaseObj)
         except:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
         return phases
 
-    def GetTournamentPhaseGroup(self, id, progress_callback=None):
+    def GetTournamentPhaseGroup(self, id, progress_callback=None, cancel_event=None):
         finalData = {}
 
         try:
-            data = requests.post(
+            data = self.QueryRequests(
                 "https://www.start.gg/api/-/gql",
-                headers={
-                    "client-version": "20",
-                    'Content-Type': 'application/json'
-                },
-                json={
+                type=requests.post,
+                jsonParams={
                     "operationName": "TournamentPhaseGroupQuery",
                     "variables": {
                         "id": id,
@@ -186,22 +197,17 @@ class StartGGDataProvider(TournamentDataProvider):
                     "query": StartGGDataProvider.TournamentPhaseGroupQuery
                 }
             )
-            data = json.loads(data.text)
 
-            oldData = requests.get(
+            oldData = self.QueryRequests(
                 f"https://api.smash.gg/phase_group/{id}",
-                headers={
-                    "client-version": "20",
-                    'Content-Type': 'application/json'
-                }
+                type=requests.get
             )
-            oldData = json.loads(oldData.text)
 
             seeds = deep_get(data, "data.phaseGroup.seeds.nodes", [])
             seeds.sort(key=lambda s: s.get("seedNum"))
 
             seedMap: list = deep_get(data, "data.phaseGroup.seedMap.1")
-            
+
             if seedMap:
                 seedMap = [s if s != "bye" else -1 for s in seedMap]
                 finalData["seedMap"] = seedMap
@@ -219,10 +225,11 @@ class StartGGDataProvider(TournamentDataProvider):
                     team["players"] = []
 
                     for entrant in participants:
-                        team["players"].append(StartGGDataProvider.ProcessEntrantData(entrant, deep_get(seed, "entrant.paginatedSets.nodes")))
-                    
+                        team["players"].append(StartGGDataProvider.ProcessEntrantData(
+                            entrant, deep_get(seed, "entrant.paginatedSets.nodes")))
+
                 teams.append(team)
-            
+
             finalData["entrants"] = teams
 
             sets = deep_get(data, "data.phaseGroup.sets.nodes", [])
@@ -233,17 +240,19 @@ class StartGGDataProvider(TournamentDataProvider):
             isPreview = any("preview" in str(s.get("id")) for s in sets)
 
             if not isPreview:
-                sets.sort(key=lambda s: (abs(int(s.get("round"))), s.get("id")))
+                sets.sort(key=lambda s: (
+                    abs(int(s.get("round"))), s.get("id")))
             else:
-                sets.sort(key=lambda s: (abs(int(s.get("round"))), int(s.get("id").split("_")[-1])))
-            
+                sets.sort(key=lambda s: (abs(int(s.get("round"))),
+                          int(s.get("id").split("_")[-1])))
+
             finalSets = {}
 
             for s in sets:
-                print(s)
+                # logger.info(s)
 
                 round = int(s.get("round"))
-                
+
                 if not str(round) in finalSets:
                     finalSets[str(round)] = []
 
@@ -255,13 +264,15 @@ class StartGGDataProvider(TournamentDataProvider):
             finalData["sets"] = finalSets
 
             finalData["progressionsIn"] = []
-            
+
             for s in seeds:
-                originPhaseId = deep_get(s, "progressionSource.originPhaseGroup.id")
+                originPhaseId = deep_get(
+                    s, "progressionSource.originPhaseGroup.id")
                 if originPhaseId:
                     finalData["progressionsIn"].append(originPhaseId)
 
-            finalData["winnersOnlyProgressions"] = deep_get(oldData, "entities.groups.hasCustomWinnerByes")
+            finalData["winnersOnlyProgressions"] = deep_get(
+                oldData, "entities.groups.hasCustomWinnerByes")
 
             for s in sets:
                 if s.get("slots", []) and int(s.get("round")) == -2:
@@ -271,15 +282,17 @@ class StartGGDataProvider(TournamentDataProvider):
 
                 if finalData["winnersOnlyProgressions"] == False:
                     break
-            
-            finalData["customSeeding"] = deep_get(oldData, "entities.groups.hasCustomWinnerByes")
-            
+
+            finalData["customSeeding"] = deep_get(
+                oldData, "entities.groups.hasCustomWinnerByes")
+
             if len(finalData["progressionsIn"]) > 0 and not finalData["winnersOnlyProgressions"]:
                 originalKeys = list(finalData["sets"].keys())
                 originalKeys.reverse()
 
                 # If we have a non-power2 number of progressions in, we shift 2 rounds
-                shift = 1 if is_power_of_two(len(finalData["progressionsIn"])) else 2
+                shift = 1 if is_power_of_two(
+                    len(finalData["progressionsIn"])) else 2
 
                 if deep_get(oldData, "entities.groups.hasCustomWinnerByes"):
                     shift = 1
@@ -289,9 +302,11 @@ class StartGGDataProvider(TournamentDataProvider):
 
                     # If we have progressions in, shift winners scores to the right
                     if round > 0:
-                        finalData["sets"][str(round+shift)] = finalData["sets"].pop(roundKey)
-            
-            finalData["progressionsOut"] = deep_get(data, "data.phaseGroup.progressionsOut")
+                        finalData["sets"][str(
+                            round+shift)] = finalData["sets"].pop(roundKey)
+
+            finalData["progressionsOut"] = deep_get(
+                data, "data.phaseGroup.progressionsOut")
 
             # StartGG gives us 2 sets for GFs, we want that divided into 2 rounds
             if finalData["progressionsOut"] == None or len(finalData["progressionsOut"]) == 0:
@@ -300,28 +315,12 @@ class StartGGDataProvider(TournamentDataProvider):
                     gfsReset = finalData["sets"][str(lastRound)].pop()
                     finalData["sets"][str(lastRound+1)] = [gfsReset]
         except:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
         return finalData
 
-    def GetMatch(self, setId):
-        try:
-            r = requests.get(
-                f'https://www.start.gg/api/-/gg_api./set/{setId};bustCache=true;expand=["setTask"];fetchMostRecentCached=true',
-                {
-                    "extensions": {"cacheControl": {"version": 1, "noCache": True}},
-                    "cacheControl": {"version": 1, "noCache": True},
-                    "Cache-Control": "no-cache",
-                    "Pragma": "no-cache"
-                }
-            )
-
-        except Exception as e:
-            traceback.print_exc()
-        return {}
-
-    def GetMatch(self, setId, progress_callback):
-        finalResult = {}
+    def GetMatch(self, setId, progress_callback, cancel_event):
+        finalResult = None
 
         try:
             pool = self.getMatchThreadPool
@@ -330,6 +329,7 @@ class StartGGDataProvider(TournamentDataProvider):
 
             fetchOld = Worker(self._GetMatchTasks, **{
                 "progress_callback": None,
+                "cancel_event": None,
                 "setId": setId
             })
             fetchOld.signals.result.connect(
@@ -338,6 +338,7 @@ class StartGGDataProvider(TournamentDataProvider):
 
             fetchNew = Worker(self._GetMatchNewApi, **{
                 "progress_callback": None,
+                "cancel_event": None,
                 "setId": setId
             })
             fetchNew.signals.result.connect(
@@ -348,46 +349,56 @@ class StartGGDataProvider(TournamentDataProvider):
             QCoreApplication.processEvents()
 
             finalResult = {}
-            finalResult.update(result["new"])
-            finalResult.update(result["old"])
+            finalResult.update(result.get("new", {}))
+            finalResult.update(result.get("old", {}))
 
-            if result["new"].get("isOnline") == False:
+            winnerProgression = result.get("old", {}).get("winnerProgression")
+            if winnerProgression:
+                winnerProgression = re.sub(
+                    r"\s*[\(\{\[].*?[\)\}\]]", "", winnerProgression).strip()
+                finalResult["round_name"] = TSHLocaleHelper.matchNames.get(
+                    "qualifier").format(winnerProgression)
+
+            if result.get("new", {}).get("isOnline") == False:
                 finalResult["bestOf"] = None
 
-            finalResult["entrants"] = result["new"]["entrants"]
+            finalResult["entrants"] = result.get("new", {}).get("entrants", [])
 
-            if result["old"].get("entrants", []) is not None:
-                for t, team in enumerate(result["old"].get("entrants", [])):
+            if result.get("old", {}).get("entrants", []) is not None:
+                for t, team in enumerate(result.get("old", {}).get("entrants", [])):
                     for p, player in enumerate(team):
                         if player["mains"]:
-                            finalResult["entrants"][t][p]["mains"] = player["mains"]
-                            finalResult["has_selection_data"] = True
+                            try:
+                                finalResult["entrants"][t][p]["mains"] = player["mains"]
+                                finalResult["has_selection_data"] = True
+                            except:
+                                logger.debug(traceback.format_exc())
 
         except Exception as e:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
         return finalResult
 
-    def _GetMatchTasks(self, setId, progress_callback):
-        r = requests.get(
+    def _GetMatchTasks(self, setId, progress_callback, cancel_event):
+        if "preview" in str(setId):
+            return self.ParseMatchDataOldApi({})
+
+        data = self.QueryRequests(
             f'https://www.start.gg/api/-/gg_api./set/{setId};bustCache=true;expand=["setTask"];fetchMostRecentCached=true',
-            {
+            type=requests.get,
+            params={
                 "extensions": {"cacheControl": {"version": 1, "noCache": True}},
                 "cacheControl": {"version": 1, "noCache": True},
                 "Cache-Control": "no-cache",
                 "Pragma": "no-cache"
             }
         )
-        data = json.loads(r.text)
         return self.ParseMatchDataOldApi(data)
 
-    def _GetMatchNewApi(self, setId, progress_callback):
-        data = requests.post(
+    def _GetMatchNewApi(self, setId, progress_callback, cancel_event):
+        data = self.QueryRequests(
             "https://www.start.gg/api/-/gql",
-            headers={
-                "client-version": "20",
-                'Content-Type': 'application/json'
-            },
-            json={
+            type=requests.post,
+            jsonParams={
                 "operationName": "SetQuery",
                 "variables": {
                     "id": setId
@@ -395,32 +406,29 @@ class StartGGDataProvider(TournamentDataProvider):
                 "query": StartGGDataProvider.SetQuery
             }
         )
-        data = json.loads(data.text)
+        logger.debug(data.get("data", {}).get("set", {}))
         return self.ParseMatchDataNewApi(data.get("data", {}).get("set", {}))
 
-    def GetMatches(self, getFinished=False, progress_callback=None):
+    def GetMatches(self, getFinished=False, progress_callback=None, cancel_event=None):
         try:
-            print("Get matches", getFinished)
+            logger.info("Get matches", getFinished)
             states = [1, 6, 2]
-            
+
             if getFinished:
                 states.append(3)
 
             final_data = []
-            
+
             page = 1
             totalPages = 1
 
-            print("Fetching sets")
+            logger.info("Fetching sets")
 
-            while page <= totalPages:
-                data = requests.post(
+            while page <= totalPages and not cancel_event.is_set():
+                data = self.QueryRequests(
                     "https://www.start.gg/api/-/gql",
-                    headers={
-                        "client-version": "20",
-                        'Content-Type': 'application/json'
-                    },
-                    json={
+                    type=requests.post,
+                    jsonParams={
                         "operationName": "EventMatchListQuery",
                         "variables": {
                             "filters": {
@@ -429,31 +437,96 @@ class StartGGDataProvider(TournamentDataProvider):
                             },
                             "eventSlug": self.url.split("start.gg/")[1],
                             "page": page,
-                            "perPage": 512
+                            "perPage": 64
                         },
                         "query": StartGGDataProvider.SetsQuery
                     }
                 )
-                data = json.loads(data.text)
 
-                totalPages = deep_get(data, "data.event.sets.pageInfo.totalPages", 0)
+                totalPages = deep_get(
+                    data, "data.event.sets.pageInfo.totalPages", 0)
 
                 sets = deep_get(data, "data.event.sets.nodes", [])
+                newSets = []
 
                 for _set in sets:
-                    final_data.append(self.ParseMatchDataNewApi(_set))
-                
+                    parsed = self.ParseMatchDataNewApi(_set)
+                    final_data.append(parsed)
+                    newSets.append(parsed)
+
+                if progress_callback:
+                    progress_callback.emit({
+                        "progress": page,
+                        "totalPages": totalPages,
+                        "sets": newSets
+                    })
+
                 page += 1
-
-                print(f"Fetching sets... {page}/{totalPages}")
-
-            return(final_data)
+                logger.info(f"Fetching sets... {page}/{totalPages}")
+            return (final_data)
         except Exception as e:
-            traceback.print_exc()
-            return(final_data)
-        return([])
-    
+            logger.error(traceback.format_exc())
+            return (final_data)
+        return ([])
+
+    def GetStations(self, progress_callback=None, cancel_event=None):
+        try:
+            logger.info("Get stations")
+
+            final_data = []
+
+            logger.info("Fetching stations")
+
+            data = self.QueryRequests(
+                "https://www.start.gg/api/-/gql",
+                type=requests.post,
+                jsonParams={
+                    "operationName": "Stations",
+                    "variables": {
+                        "eventSlug": self.url.split("start.gg/")[1],
+                    },
+                    "query": StartGGDataProvider.StationsQuery
+                }
+            )
+
+            stations = deep_get(data, "data.event.stations.nodes", [])
+            queues = deep_get(data, "data.event.tournament.streamQueue", [])
+
+            if stations is not None:
+                for station in stations:
+                    stream = ""
+
+                    if queues is not None:
+                        stream = next((deep_get(s, "stream.streamName", None) for s in queues if str(
+                            deep_get(s, "stream.id", None)) == str(station.get("streamId"))), "")
+
+                    final_data.append({
+                        "id": station.get("id"),
+                        "identifier": station.get("number"),
+                        "type": "station",
+                        "stream": stream
+                    })
+
+            if queues is not None:
+                for queue in queues:
+                    if queue.get("stream") is not None:
+                        stream = queue.get("stream")
+                        final_data.append({
+                            "id": stream.get("id"),
+                            "identifier": stream.get("streamName"),
+                            "type": "stream"
+                        })
+
+            return (final_data)
+        except Exception as e:
+            logger.error(traceback.format_exc())
+            return (final_data)
+        return ([])
+
     def TranslateRoundName(name: str):
+        if name == None:
+            return ""
+
         roundMapping = {
             "Grand Final Reset": "grand_final_reset",
             "Grand Final": "grand_final",
@@ -467,7 +540,7 @@ class StartGGDataProvider(TournamentDataProvider):
 
         if name in roundMapping:
             return TSHLocaleHelper.matchNames.get(roundMapping.get(name))
-        
+
         try:
             roundNumber = name.rsplit(" ")[-1]
 
@@ -478,42 +551,50 @@ class StartGGDataProvider(TournamentDataProvider):
             elif name.startswith("Round "):
                 return TSHLocaleHelper.matchNames.get("round").format(roundNumber)
         except:
-            print(traceback.format_exc())
-        
+            logger.error(traceback.format_exc())
+
         return name
 
-
     def ParseMatchDataNewApi(self, _set):
-        p1 = deep_get(_set, "slots", [])[0]
-        p2 = deep_get(_set, "slots", [])[1]
+        slots = deep_get(_set, "slots", [])
+        p1 = slots[0] if len(slots) > 0 else {}
+        p2 = slots[1] if len(slots) > 1 else {}
 
         # Add Pool identifier if phase has multiple Pools
         phase_name = deep_get(_set, "phaseGroup.phase.name")
 
         bracket_type = deep_get(_set, "phaseGroup.phase.bracketType", "")
 
-        if deep_get(_set, "phaseGroup.phase.groupCount") > 1:
-            phase_name += " - " + TSHLocaleHelper.phaseNames.get("group").format(deep_get(_set, "phaseGroup.displayIdentifier"))
+        isPools = deep_get(_set, "phaseGroup.phase.groupCount", 0) > 1
+        if isPools:
+            phase_name += " - " + TSHLocaleHelper.phaseNames.get(
+                "group").format(deep_get(_set, "phaseGroup.displayIdentifier"))
 
         setData = {
             "id": _set.get("id"),
+            "team1score": _set.get("entrant1Score"),
+            "team2score": _set.get("entrant2Score"),
             "round_name": StartGGDataProvider.TranslateRoundName(_set.get("fullRoundText")),
             "tournament_phase": phase_name,
             "bracket_type": bracket_type,
-            "p1_name": p1.get("entrant", {}).get("name", "") if p1 and p1.get("entrant", {}) != None else "",
-            "p2_name": p2.get("entrant", {}).get("name", "") if p2 and p2.get("entrant", {}) != None else "",
+            "p1_name": p1.get("entrant", {}).get("name", "") if p1 and p1.get("entrant") != None else "",
+            "p2_name": p2.get("entrant", {}).get("name", "") if p2 and p2.get("entrant") != None else "",
+            "p1_seed": p1.get("entrant", {}).get("initialSeedNum", None) if p1 and p1.get("entrant") else None,
+            "p2_seed": p2.get("entrant", {}).get("initialSeedNum", None) if p2 and p2.get("entrant") else None,
             "stream": _set.get("stream", {}).get("streamName", "") if _set.get("stream", {}) != None else "",
+            "station": _set.get("station", {}).get("number", "") if _set.get("station", {}) != None else "",
             "isOnline": deep_get(_set, "event.isOnline"),
+            "isPools": isPools,
         }
 
         players = [[], []]
 
         entrants = [
-            deep_get(_set, "slots", [])[0].get(
-                "entrant", {}).get("participants", []) if deep_get(_set, "slots", [])[0].get(
+            p1.get(
+                "entrant", {}).get("participants", []) if p1.get(
                 "entrant", {}) is not None else [],
-            deep_get(_set, "slots", [])[1].get(
-                "entrant", {}).get("participants", []) if deep_get(_set, "slots", [])[1].get(
+            p2.get(
+                "entrant", {}).get("participants", []) if p2.get(
                 "entrant", {}) is not None else [],
         ]
 
@@ -609,17 +690,39 @@ class StartGGDataProvider(TournamentDataProvider):
                         player.get("id"),
                         0
                     ]
-                if playerData["id"][0] is not None:
-                    playerData["seed"] = self.player_seeds[playerData["id"][0]]
-                
+                if playerData.get("id") and len(playerData.get("id")) > 0:
+                    if playerData["id"][0] is not None:
+                        playerData["seed"] = self.player_seeds.get(
+                            playerData["id"][0])
+
+                if setData.get(f"p{i+1}_seed"):
+                    playerData["seed"] = setData.get(f"p{i+1}_seed")
+
                 players[i].append(playerData)
 
         setData["entrants"] = players
 
         return setData
 
+    def TopNPlacement(self, placement):
+        if placement == 5 or placement == 6:
+            return 6
+        else:
+            top_number = 1
+            while top_number < placement:
+                top_number *= 2
+
+            return top_number
+
     def ParseMatchDataOldApi(self, respTasks):
-        tasks = respTasks.get("entities", {}).get("setTask", [])
+        entities = respTasks.get("entities", {})
+        sets = entities.get("sets", {})
+        tasks = entities.get("setTask", [])
+
+        lOverallPlacement = sets.get("lOverallPlacement", 0)
+        topN = 0
+        if lOverallPlacement and lOverallPlacement > 0:
+            topN = self.TopNPlacement(lOverallPlacement)
 
         selectedCharMap = {}
 
@@ -628,18 +731,20 @@ class StartGGDataProvider(TournamentDataProvider):
                 selectedCharMap = task.get(
                     "metadata", {}).get("charSelections", {})
                 if len(selectedCharMap) > 0:
-                        break
+                    break
             elif task.get("action") in ["report"]:
-                allSelections = task.get("metadata", {}).get("report", {}).get("selections", [])
+                allSelections = task.get("metadata", {}).get(
+                    "report", {}).get("selections", [])
 
                 if isinstance(allSelections, list):
                     for selection in allSelections:
                         if selection.get("selectionType") == "character":
-                            selectedCharMap[str(selection.get("entrantId"))] = [selection.get("selectionValue")]
+                            selectedCharMap[str(selection.get("entrantId"))] = [
+                                selection.get("selectionValue")]
                     if len(selectedCharMap) > 0:
                         break
 
-        print(selectedCharMap)
+        logger.info(selectedCharMap)
         selectedChars = [[], []]
 
         for char in selectedCharMap.items():
@@ -659,7 +764,7 @@ class StartGGDataProvider(TournamentDataProvider):
                 latestWinner = int(task.get("metadata", {}).get(
                     "report", {}).get("winnerId"))
                 break
-        
+
         lastWinnerSlot = None
 
         if latestWinner:
@@ -710,15 +815,18 @@ class StartGGDataProvider(TournamentDataProvider):
                         stages = []
 
                         for stageCode in stageCodes:
-                            stages.append(TSHGameAssetManager.instance.GetStageFromStartGGId(int(stageCode))[1].get("codename"))
+                            stages.append(TSHGameAssetManager.instance.GetStageFromStartGGId(
+                                int(stageCode))[1].get("codename"))
 
                         if str(entrantId) == str(respTasks.get("entities", {}).get("sets", {}).get("entrant1Id")):
                             stageWins[0] = stages
                         if str(entrantId) == str(respTasks.get("entities", {}).get("sets", {}).get("entrant2Id")):
                             stageWins[1] = stages
-                
-                if base.get("useMDSR"): mdsr = True
-                if base.get("useDSR"): dsr = True
+
+                if base.get("useMDSR"):
+                    mdsr = True
+                if base.get("useDSR"):
+                    dsr = True
 
                 if base.get("strikeList"):
                     for stage_code, entrant in base.get("strikeList").items():
@@ -813,7 +921,7 @@ class StartGGDataProvider(TournamentDataProvider):
                 "useMDSR": mdsr,
             }
         except:
-            print("No Stage Strike Info Found")
+            logger.info("No Stage Strike Info Found")
             allStages = None
             strikedStages = None
             strikedBy = [[], []]
@@ -831,6 +939,21 @@ class StartGGDataProvider(TournamentDataProvider):
                     "mains": [TSHGameAssetManager.instance.GetCharacterFromStartGGId(char)[0], 0]
                 })
 
+        for i in [0, 1]:
+            if len(entrants[i]) == 0:
+                characterIds = deep_get(
+                    respTasks, f"entities.sets.entrant{i+1}CharacterIds", [])
+
+                if characterIds is not None:
+                    for char in characterIds:
+                        try:
+                            entrants[i].append({
+                                "mains": [TSHGameAssetManager.instance.GetCharacterFromStartGGId(char)[0], 0]
+                            })
+                        except:
+                            continue
+
+
         team1losers = False
         team2losers = False
 
@@ -841,8 +964,11 @@ class StartGGDataProvider(TournamentDataProvider):
             else:
                 team1losers = True
                 team2losers = True
+        
+        logger.info("Team 1 Score - OLD API: " + str(respTasks.get("entities", {}).get("sets", {}).get("entrant1Score", None)))
+        logger.info("Team 2 Score - OLD API: " + str(respTasks.get("entities", {}).get("sets", {}).get("entrant2Score", None)))
 
-        return({
+        return ({
             "stage_strike": stageStrikeState,
             "ruleset": rulesetState,
             "strikedBy": strikedBy,
@@ -850,21 +976,104 @@ class StartGGDataProvider(TournamentDataProvider):
             "team1score": respTasks.get("entities", {}).get("sets", {}).get("entrant1Score", None),
             "team2score": respTasks.get("entities", {}).get("sets", {}).get("entrant2Score", None),
             "bestOf": respTasks.get("entities", {}).get("sets", {}).get("bestOf", None),
+            "top_n": topN,
             "team1losers": team1losers,
             "team2losers": team2losers,
-            "currPlayer": currPlayer
+            "currPlayer": currPlayer,
+            "winnerProgression": respTasks.get("entities", {}).get("sets", {}).get("wProgressingName", None),
+            "loserProgression": respTasks.get("entities", {}).get("sets", {}).get("lProgressingName", None)
         })
 
-    def GetStreamQueue(self, progress_callback=None):
+    def ProcessFutureSet(self, _set, eventSlug):
+        phase_name = deep_get(_set, "phaseGroup.phase.name")
+        if deep_get(_set, "phaseGroup.phase.groupCount") > 1:
+            phase_name += " - " + TSHLocaleHelper.phaseNames.get(
+                "group").format(deep_get(_set, "phaseGroup.displayIdentifier"))
 
+        frt = _set.get("fullRoundText", "")
+        total_games = _set.get("totalGames", 0)
+        seteventSlug = deep_get(_set, "event.slug", "")
+
+        setData = {
+            "id": _set.get("id"),
+            "match": StartGGDataProvider.TranslateRoundName(frt),
+            "phase": phase_name,
+            "best_of": total_games,
+            "best_of_text": TSHLocaleHelper.matchNames.get("best_of").format(total_games) if total_games > 0 else "",
+            "state": _set.get("state"),
+            "team": {},
+            "station": deep_get(_set, "station.number", -1),
+            "event": seteventSlug,
+            "isCurrentEvent": seteventSlug == eventSlug
+        }
+
+        for teamIndex, slot in enumerate(_set.get("slots", [])):
+            entrant = slot.get("entrant", None)
+            if entrant:
+
+                losers = False
+                if "Gran" in frt:
+                    if teamIndex == 1 or "Reset" in frt:
+                        losers = True
+
+                teamData = {
+                    "teamName": entrant.get("name", ""),
+                    "losers": losers,
+                    "seed": entrant.get("initialSeed", 889977666),
+                    "player": {}
+                }
+
+                # TODO : pull the state data
+
+                for playerIndex, participant in enumerate(entrant.get("participants", [])):
+                    playerData = StartGGDataProvider.ProcessEntrantData(
+                        participant)
+                    playerName = playerData.get("gamerTag", "")
+                    team = playerData.get("prefix", "")
+
+                    countryCode = playerData.get(
+                        "country_code", "")
+                    stateCode = playerData.get("state_code", "")
+                    countryData = TSHCountryHelper.countries.get(
+                        countryCode)
+                    stateData = {}
+                    if countryData:
+                        states = countryData.get("states")
+                        if stateCode:
+                            stateData = states[stateCode]
+
+                            path = f'./assets/state_flag/{countryCode}/{"_CON" if stateCode == "CON" else stateCode}.png'
+                            if not os.path.exists(path):
+                                path = None
+
+                            stateData.update({
+                                "asset": path
+                            })
+
+                    playerData = {
+                        "country": TSHCountryHelper.GetBasicCountryInfo(countryCode),
+                        "state": stateData,
+                        "name": playerName,
+                        "team": team,
+                        "mergedName": team + "|" + playerName if isinstance(team, str) and team != "" else playerName,
+                        "pronoun": playerData.get("pronoun", ""),
+                        "real_name": playerData.get("name", ""),
+                        "online_avatar": playerData.get("avatar", ""),
+                        "twitter":  playerData.get("twitter", "")
+                    }
+
+                    teamData["player"][str(
+                        playerIndex + 1)] = playerData
+
+                setData["team"][str(teamIndex + 1)] = teamData
+        return setData
+
+    def GetStreamQueue(self, progress_callback=None, cancel_event=None):
         try:
-            data = requests.post(
+            data = self.QueryRequests(
                 "https://www.start.gg/api/-/gql",
-                headers={
-                    "client-version": "20",
-                    'Content-Type': 'application/json'
-                },
-                json={
+                type=requests.post,
+                jsonParams={
                     "operationName": "StreamQueueQuery",
                     "variables": {
                         "slug": self.url.split("start.gg/")[1]
@@ -872,75 +1081,27 @@ class StartGGDataProvider(TournamentDataProvider):
                     "query": StartGGDataProvider.StreamQueueQuery
                 }
             )
-            data = json.loads(data.text)
+            logger.info("Stream queue loaded from StartGG")
 
+            eventSlug = deep_get(data, "data.event.slug", "")
             queues = deep_get(data, "data.event.tournament.streamQueue", [])
 
             finalData = {}
+
+            if not queues:
+                logger.info("(No stream queue was found)")
+                return finalData
+
             for q in queues:
                 streamName = q.get("stream", {}).get("streamName", "")
                 queueData = {}
                 for setIndex, _set in enumerate(q.get("sets", [])):
-                    phase_name = deep_get(_set, "phaseGroup.phase.name")
-                    if deep_get(_set, "phaseGroup.phase.groupCount") > 1:
-                        phase_name += " - " + TSHLocaleHelper.phaseNames.get("group").format(deep_get(_set, "phaseGroup.displayIdentifier"))
 
-                    frt = _set.get("fullRoundText", "")
-                    total_games = _set.get("totalGames", 0)
-
-                    setData = {
-                        "id": _set.get("id"),
-                        "match": StartGGDataProvider.TranslateRoundName(frt),
-                        "phase": phase_name,
-                        "best_of" : total_games,
-                        "best_of_text" : TSHLocaleHelper.matchNames.get("best_of").format(total_games) if total_games > 0 else "",
-                        "state": _set.get("state"),
-                        "team" : {}
-                    }
-
-                    for teamIndex, slot in enumerate(_set.get("slots", [])):
-                        entrant = slot.get("entrant", None)
-                        if entrant:
-
-                            losers = False
-                            if "Gran" in frt:
-                                if teamIndex == 1 or "Reset" in frt :
-                                    losers = True
-
-                            teamData = {
-                                "teamName": entrant.get("name", ""),
-                                "losers": losers,
-                                "seed": entrant.get("seeds", [])[0].get("seedNum", 889977666),
-                                "player" : {}
-                            }
-
-                            #TODO : pull the state data
-
-                            for playerIndex, participant in enumerate(entrant.get("participants", [])):
-                                playerData = StartGGDataProvider.ProcessEntrantData(participant)
-                                playerName = playerData.get("gamerTag", "")
-                                team = playerData.get("prefix", "")
-                                playerData = {
-                                    "country": TSHCountryHelper.GetBasicCountryInfo(playerData.get("country_code", "")),
-                                    "state" : {},
-                                    "name" : playerName,
-                                    "team" : team,
-                                    "mergedName" : team + "|" + playerName if isinstance(team, str) and team != "" else playerName,
-                                    "pronoun" : playerData.get("pronoun", ""),
-                                    "real_name" : playerData.get("name", ""),
-                                    "online_avatar" : playerData.get("avatar", ""),
-                                    "twitter":  playerData.get("twitter", "")
-                                }
-
-                                teamData["player"][str(playerIndex + 1)] = playerData
-
-                            setData["team"][str(teamIndex + 1)] = teamData
+                    setData = self.ProcessFutureSet(_set, eventSlug)
 
                     queueData[str(setIndex + 1)] = setData
 
                 finalData[streamName] = queueData
-
-            print(finalData)
 
             return finalData
 
@@ -956,22 +1117,18 @@ class StartGGDataProvider(TournamentDataProvider):
             """
 
         except Exception as e:
-            traceback.print_exc()
-        
-        return {}
+            logger.error(traceback.format_exc())
 
+        return {}
 
     def GetStreamMatchId(self, streamName):
         streamSet = None
 
         try:
-            data = requests.post(
+            data = self.QueryRequests(
                 "https://www.start.gg/api/-/gql",
-                headers={
-                    "client-version": "20",
-                    'Content-Type': 'application/json'
-                },
-                json={
+                type=requests.post,
+                jsonParams={
                     "operationName": "StreamSetsQuery",
                     "variables": {
                         "eventSlug": self.url.split("start.gg/")[1]
@@ -979,16 +1136,16 @@ class StartGGDataProvider(TournamentDataProvider):
                     "query": StartGGDataProvider.StreamSetsQuery
                 }
             )
-            data = json.loads(data.text)
 
             eventId = deep_get(data, "data.event.id", None)
 
             queues = deep_get(data, "data.event.tournament.streamQueue", [])
 
             if queues:
-                lStreamName = streamName.lower() #"""performance"""
+                lStreamName = streamName.lower()  # """performance"""
                 queue = next(
-                    (q for q in queues if q and q.get("stream", {}).get("streamName", "").lower() == lStreamName),
+                    (q for q in queues if q and q.get("stream", {}).get(
+                        "streamName", "").lower() == lStreamName),
                     None
                 )
 
@@ -998,28 +1155,60 @@ class StartGGDataProvider(TournamentDataProvider):
                     if len(queueSets) > 0:
                         streamSet = queueSets[0]
         except Exception as e:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
         return streamSet
+
+    def GetStationMatchsId(self, stationId):
+        sets = None
+
+        try:
+            data = self.QueryRequests(
+                "https://www.start.gg/api/-/gql",
+                type=requests.post,
+                jsonParams={
+                    "operationName": "StationSetsQuery",
+                    "variables": {
+                        "eventSlug": self.url.split("start.gg/")[1],
+                        "filters": {
+                            "state": [1, 2, 4, 5, 6],
+                            "hideEmpty": True
+                        }
+                    },
+                    "query": StartGGDataProvider.StationSetsQuery
+                }
+            )
+
+            sets = deep_get(data, "data.event.sets.nodes", [])
+
+            sets = [s for s in sets if str(deep_get(
+                s, "station.id", "-1")) == str(stationId)]
+
+        except Exception as e:
+            logger.error(traceback.format_exc())
+
+        return sets
+
+    def GetStationMatchId(self, stationId):
+        sets = self.GetStationMatchsId(self, stationId)
+
+        return sets[0] if len(sets) > 0 else None
 
     def GetUserMatchId(self, user):
         matches = re.match(
             r".*start.gg/(user/[^/]*)", user)
-        print(matches)
+        logger.info(matches)
         if matches:
             user = matches.groups()[0]
 
         userSet = None
 
         try:
-            print(user)
-            data = requests.post(
+            logger.info(user)
+            data = self.QueryRequests(
                 "https://www.start.gg/api/-/gql",
-                headers={
-                    "client-version": "20",
-                    'Content-Type': 'application/json'
-                },
-                json={
+                type=requests.post,
+                jsonParams={
                     "operationName": "UserSetQuery",
                     "variables": {
                         "userSlug": user,
@@ -1030,21 +1219,17 @@ class StartGGDataProvider(TournamentDataProvider):
                     "query": StartGGDataProvider.UserSetQuery
                 }
             )
-            data = json.loads(data.text)
 
-            print(data)
+            logger.info(data)
 
             sets = deep_get(data, "data.user.player.sets.nodes")
 
             # If there's no active set, get last finished set instead
             if sets is not None and len(sets) == 0:
-                data = requests.post(
+                data = self.QueryRequests(
                     "https://www.start.gg/api/-/gql",
-                    headers={
-                        "client-version": "20",
-                        'Content-Type': 'application/json'
-                    },
-                    json={
+                    type=requests.post,
+                    jsonParams={
                         "operationName": "UserSetQuery",
                         "variables": {
                             "userSlug": user,
@@ -1054,9 +1239,8 @@ class StartGGDataProvider(TournamentDataProvider):
                         "query": StartGGDataProvider.UserSetQuery
                     }
                 )
-                data = json.loads(data.text)
 
-                print(data)
+                logger.info(data)
 
                 sets = deep_get(data, "data.user.player.sets.nodes")
 
@@ -1079,9 +1263,9 @@ class StartGGDataProvider(TournamentDataProvider):
                             userSet["reverse"] = True
                             break
 
-                print(userSet)
+                logger.info(userSet)
         except Exception as e:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
         return userSet
 
@@ -1091,16 +1275,13 @@ class StartGGDataProvider(TournamentDataProvider):
             "eventSlug": self.url.split("start.gg/")[1]
         })
         self.threadpool.start(worker)
-        
-    def GetLastSets(self, playerID, playerNumber, callback, progress_callback):
+
+    def GetLastSets(self, playerID, playerNumber, callback, progress_callback, cancel_event):
         try:
-            data = requests.post(
+            data = self.QueryRequests(
                 "https://www.start.gg/api/-/gql",
-                headers={
-                    "client-version": "20",
-                    'Content-Type': 'application/json'
-                },
-                json={
+                type=requests.post,
+                jsonParams={
                     "operationName": "PlayerLastSetsQuery",
                     "variables": {
                         "eventSlug": self.url.split("start.gg/")[1],
@@ -1108,10 +1289,7 @@ class StartGGDataProvider(TournamentDataProvider):
                     },
                     "query": StartGGDataProvider.LastSetsQuery
                 }
-
             )
-
-            data = json.loads(data.text)
 
             sets = deep_get(
                 data, "data.event.sets.nodes", [])
@@ -1135,44 +1313,48 @@ class StartGGDataProvider(TournamentDataProvider):
                 phaseName = deep_get(set, "phaseGroup.phase.name")
 
                 player1Info = set.get("slots", [{}])[0].get("entrant", {}).get(
-                        "participants", [{}])[0].get("player", {})
+                    "participants", [{}])[0].get("player", {})
+                player1Seed = set.get(
+                    "slots", [{}])[0].get("initialSeedNum", 0)
 
                 player2Info = set.get("slots", [{}])[1].get("entrant", {}).get(
-                        "participants", [{}])[0].get("player", {})
+                    "participants", [{}])[0].get("player", {})
+                player2Seed = set.get(
+                    "slots", [{}])[1].get("initialSeedNum", 0)
 
                 players = ["1", "2"]
 
                 if player1Info.get("id") != playerID:
                     players.reverse()
-                
+
                 player_set = {
                     "phase_id": phaseIdentifier,
                     "phase_name": phaseName,
                     "round_name": StartGGDataProvider.TranslateRoundName(set.get("fullRoundText")),
                     f"player{players[0]}_score": set.get("entrant1Score"),
+                    f"player{players[0]}_seed": player1Seed,
                     f"player{players[0]}_team": player1Info.get("prefix"),
                     f"player{players[0]}_name": player1Info.get("gamerTag"),
                     f"player{players[1]}_score": set.get("entrant2Score"),
+                    f"player{players[1]}_seed": player2Seed,
                     f"player{players[1]}_team": player2Info.get("prefix"),
                     f"player{players[1]}_name": player2Info.get("gamerTag")
                 }
 
                 set_data.append(player_set)
 
-            callback.emit({"playerNumber": playerNumber, "last_sets": set_data})
+            callback.emit(
+                {"playerNumber": playerNumber, "last_sets": set_data})
         except Exception as e:
-            traceback.print_exc()
-            callback.emit({"playerNumber": playerNumber,"last_sets": []})
-        
-    def GetPlayerHistoryStandings(self, playerID, playerNumber, gameType, callback, progress_callback):
+            logger.error(traceback.format_exc())
+            callback.emit({"playerNumber": playerNumber, "last_sets": []})
+
+    def GetPlayerHistoryStandings(self, playerID, playerNumber, gameType, callback, progress_callback, cancel_event):
         try:
-            data = requests.post(
+            data = self.QueryRequests(
                 "https://www.start.gg/api/-/gql",
-                headers={
-                    "client-version": "20",
-                    'Content-Type': 'application/json'
-                },
-                json={
+                type=requests.post,
+                jsonParams={
                     "operationName": "TournamentHistoryDataQuery",
                     "variables": {
                         "playerID": playerID,
@@ -1180,10 +1362,7 @@ class StartGGDataProvider(TournamentDataProvider):
                     },
                     "query": StartGGDataProvider.HistorySetsQuery
                 }
-
             )
-
-            data = json.loads(data.text)
 
             sets = deep_get(
                 data, "data.player.recentStandings", [])
@@ -1198,13 +1377,13 @@ class StartGGDataProvider(TournamentDataProvider):
 
                 event = deep_get(set, "entrant.event", [])
                 tournament = deep_get(event, "tournament", [])
-                
+
                 try:
                     tournamentPicture = tournament.get("images")[0].get("url")
                 except:
                     tournamentPicture = None
-                    print(traceback.format_exc())
-                
+                    logger.error("Failed to get Event Logo for: " + tournament.get("name") + " - " + event.get("name"))
+
                 player_history = {
                     "placement": set.get("placement"),
                     "event_name": event.get("name"),
@@ -1216,11 +1395,12 @@ class StartGGDataProvider(TournamentDataProvider):
 
                 set_data.append(player_history)
 
-            callback.emit({"playerNumber": playerNumber, "history_sets": set_data})
+            callback.emit({"playerNumber": playerNumber,
+                          "history_sets": set_data})
         except Exception as e:
-            callback.emit({"playerNumber": playerNumber,"history_sets": []})
+            callback.emit({"playerNumber": playerNumber, "history_sets": []})
 
-    def GetRecentSets(self, id1, id2, callback, requestTime, progress_callback):
+    def GetRecentSets(self, id1, id2, videogame, callback, requestTime, progress_callback, cancel_event):
         try:
             id1 = [str(id1[0]), str(id1[1])]
             id2 = [str(id2[0]), str(id2[1])]
@@ -1231,7 +1411,7 @@ class StartGGDataProvider(TournamentDataProvider):
 
             pool.clear()
 
-            print("Get recent sets start")
+            logger.info("Get recent sets start")
 
             for _id1, _id2, inverted in [[id1, id2, False], [id2, id1, True]]:
                 for i in range(5):
@@ -1239,7 +1419,8 @@ class StartGGDataProvider(TournamentDataProvider):
                         "id1": _id1,
                         "id2": _id2,
                         "page": (i+1),
-                        "inverted": inverted
+                        "inverted": inverted,
+                        "videogame": videogame
                     })
                     worker.signals.result.connect(lambda result: [
                         recentSets.extend(result)
@@ -1251,36 +1432,32 @@ class StartGGDataProvider(TournamentDataProvider):
             byId = {_set.get("id"): _set for _set in recentSets}
             recentSets = list(byId.values())
             recentSets.sort(key=lambda s: s.get("timestamp"), reverse=True)
-            print("Recent sets size:", len(recentSets))
+            logger.info("Recent sets size: " + str(len(recentSets)))
             callback.emit({"sets": recentSets, "request_time": requestTime})
         except Exception as e:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
             callback.emit({"sets": [], "request_time": requestTime})
 
-    def GetRecentSetsWorker(self, id1, id2, page, inverted, progress_callback):
+    def GetRecentSetsWorker(self, id1, id2, page, videogame, inverted, progress_callback, cancel_event):
         try:
             recentSets = []
 
-            data = requests.post(
+            data = self.QueryRequests(
                 "https://www.start.gg/api/-/gql",
-                headers={
-                    "client-version": "20",
-                    'Content-Type': 'application/json'
-                },
-                json={
-                    "operationName": "RecentSetsQuery",
+                type=requests.post,
+                jsonParams={
+                    # "operationName": "RecentSetsQuery",
                     "variables": {
                         "pid1": id1[0],
                         "uid1": id1[1],
                         "pid2": id2[0],
                         "uid2": id2[1],
                         "page": page,
-                        "videogameId": TSHGameAssetManager.instance.selectedGame.get("smashgg_game_id")
+                        "videogameId": videogame
                     },
                     "query": StartGGDataProvider.RecentSetsQuery
                 }
             )
-            data = json.loads(data.text)
 
             events = deep_get(data, "data.user.events.nodes", [])
 
@@ -1366,10 +1543,10 @@ class StartGGDataProvider(TournamentDataProvider):
                     recentSets.append(entry)
             return recentSets
         except Exception as e:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
             return []
 
-    def GetEntrantsWorker(self, eventSlug, gameId, progress_callback):
+    def GetEntrantsWorker(self, eventSlug, gameId, progress_callback, cancel_event):
         try:
             page = 1
             totalPages = 1
@@ -1377,14 +1554,11 @@ class StartGGDataProvider(TournamentDataProvider):
             players = []
 
             while page <= totalPages:
-                print(page, "/", totalPages)
-                data = requests.post(
+                logger.info(str(page) + "/" + str(totalPages))
+                data = self.QueryRequests(
                     "https://www.start.gg/api/-/gql",
-                    headers={
-                        "client-version": "20",
-                        'Content-Type': 'application/json'
-                    },
-                    json={
+                    type=requests.post,
+                    jsonParams={
                         "operationName": "EventEntrantsListQuery",
                         "variables": {
                             "eventSlug": eventSlug,
@@ -1393,23 +1567,21 @@ class StartGGDataProvider(TournamentDataProvider):
                         },
                         "query": StartGGDataProvider.EntrantsQuery
                     }
-
                 )
-
-                data = json.loads(data.text)
 
                 totalPages = deep_get(
                     data, "data.event.entrants.pageInfo.totalPages", 0)
 
                 entrants = deep_get(data, "data.event.entrants.nodes", [])
-                print("Entrants: ", len(entrants))
+                logger.info("Entrants: " + str(len(entrants)))
 
                 for i, team in enumerate(entrants):
                     for j, entrant in enumerate(team.get("participants", [])):
-                        playerData = StartGGDataProvider.ProcessEntrantData(entrant)
-                        if deep_get(team, "seeds", []) != []:
-                            playerData["seed"] = deep_get(team, "seeds", [])[0].get("seedNum", 0)
-                            self.player_seeds[playerData["id"][0]] = playerData["seed"]
+                        playerData = StartGGDataProvider.ProcessEntrantData(
+                            entrant)
+                        playerData["seed"] = team.get("initialSeedNum", 0)
+                        self.player_seeds[playerData["id"]
+                                          [0]] = playerData["seed"]
                         players.append(playerData)
 
                 TSHPlayerDB.AddPlayers(players)
@@ -1417,7 +1589,7 @@ class StartGGDataProvider(TournamentDataProvider):
 
                 page += 1
         except Exception as e:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
 
     def ProcessEntrantData(entrant, setData=[]):
         player = entrant.get("player")
@@ -1439,9 +1611,9 @@ class StartGGDataProvider(TournamentDataProvider):
                 sets = deep_get(player, "sets.nodes", [])
             else:
                 sets = setData
-            
+
             playerId = player.get("id")
-            
+
             if len(sets) > 0:
                 for _set in sets:
                     games = _set.get("games", [])
@@ -1530,17 +1702,14 @@ class StartGGDataProvider(TournamentDataProvider):
                 0
             ]
 
-        return(playerData)
+        return (playerData)
 
-    def GetStandings(self, playerNumber, progress_callback):
+    def GetStandings(self, playerNumber, progress_callback, cancel_event):
         try:
-            data = requests.post(
+            data = self.QueryRequests(
                 "https://www.start.gg/api/-/gql",
-                headers={
-                    "client-version": "20",
-                    'Content-Type': 'application/json'
-                },
-                json={
+                type=requests.post,
+                jsonParams={
                     "operationName": "TournamentStandingsQuery",
                     "variables": {
                         "playerNumber": playerNumber,
@@ -1550,8 +1719,6 @@ class StartGGDataProvider(TournamentDataProvider):
                 }
 
             )
-
-            data = json.loads(data.text)
 
             standings = deep_get(data, "data.event.standings.nodes", [])
 
@@ -1568,12 +1735,66 @@ class StartGGDataProvider(TournamentDataProvider):
                 team["players"] = []
 
                 for entrant in participants:
-                    team["players"].append(StartGGDataProvider.ProcessEntrantData(entrant, deep_get(standing, "entrant.paginatedSets.nodes")))
-                
+                    team["players"].append(StartGGDataProvider.ProcessEntrantData(
+                        entrant, deep_get(standing, "entrant.paginatedSets.nodes")))
+
                 teams.append(team)
-            return(teams)
+            return (teams)
         except Exception as e:
-            traceback.print_exc()
+            logger.error(traceback.format_exc())
+
+    def GetFutureMatch(self, matchId, progress_callback, cancel_event):
+        data = self.QueryRequests(
+            "https://www.start.gg/api/-/gql",
+            type=requests.post,
+            jsonParams={
+                "operationName": "FutureSetQuery",
+                "variables": {
+                    "id": matchId
+                },
+                "query": StartGGDataProvider.FutureSetQuery
+            }
+        )
+
+        data = deep_get(data, "data.set", None)
+
+        if not data:
+            return {}
+
+        data = self.ProcessFutureSet(data, self.url.split("start.gg/")[1])
+
+        return data
+
+    def GetMatchAndInsertInListBecauseFuckPython(self, setId, list, i, progress_callback, cancel_event):
+        set = self.GetFutureMatch(setId, None)
+
+        if set:
+            list[i] = set
+
+    def GetFutureMatchesList(self, setsId, progress_callback, cancel_event):
+        sets = []
+        pool = self.getStationMatchesThreadPool
+        i = 0
+        for set in setsId:
+            sets.append(None)
+            worker = Worker(self.GetMatchAndInsertInListBecauseFuckPython, **{
+                "setId": set.get("id"),
+                "list": sets,
+                "i": i
+            })
+
+            pool.start(worker)
+
+            i += 1
+
+        pool.waitForDone(5000)
+        QCoreApplication.processEvents()
+
+        sets_ = {}
+        for index, set in enumerate(sets):
+            sets_[str(index + 1)] = set
+
+        return sets_
 
 
 f = open("src/TournamentDataProvider/StartGGSetsQuery.txt", 'r')
@@ -1612,5 +1833,14 @@ StartGGDataProvider.TournamentPhasesQuery = f.read()
 f = open("src/TournamentDataProvider/StartGGTournamentPhaseGroupQuery.txt", 'r')
 StartGGDataProvider.TournamentPhaseGroupQuery = f.read()
 
+f = open("src/TournamentDataProvider/StartGGStationsQuery.txt", 'r')
+StartGGDataProvider.StationsQuery = f.read()
+
+f = open("src/TournamentDataProvider/StartGGStationSetsQuery.txt", 'r')
+StartGGDataProvider.StationSetsQuery = f.read()
+
 f = open("src/TournamentDataProvider/StartGGStreamQueueQuery.txt", 'r')
 StartGGDataProvider.StreamQueueQuery = f.read()
+
+f = open("src/TournamentDataProvider/StartGGFutureSetQuery.txt", 'r')
+StartGGDataProvider.FutureSetQuery = f.read()

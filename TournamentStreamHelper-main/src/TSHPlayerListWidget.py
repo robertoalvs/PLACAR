@@ -1,9 +1,10 @@
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
-from PyQt5.QtCore import *
-from PyQt5 import uic
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
+from qtpy.QtCore import *
+from qtpy import uic
 import json
 import traceback
+from loguru import logger
 from .TSHPlayerListSlotWidget import TSHPlayerListSlotWidget
 
 from .TSHScoreboardPlayerWidget import TSHScoreboardPlayerWidget
@@ -13,10 +14,12 @@ from .TSHGameAssetManager import TSHGameAssetManager
 from .TSHPlayerDB import TSHPlayerDB
 from .TSHTournamentDataProvider import TSHTournamentDataProvider
 from .TSHPlayerList import TSHPlayerList
+from src.Helpers.TSHAltTextHelper import generate_top_n_alt_text, add_alt_text_tooltip_to_button
+import textwrap
 
 
 class TSHPlayerListWidgetSignals(QObject):
-    UpdateData = pyqtSignal(object)
+    UpdateData = Signal(object)
 
 
 class TSHPlayerListWidget(QDockWidget):
@@ -38,38 +41,27 @@ class TSHPlayerListWidget(QDockWidget):
         self.setFloating(True)
         self.setWindowFlags(Qt.WindowType.Window)
 
-        self.setContentsMargins(0, 0, 0, 0)
-        self.layout().setSpacing(0)
-        self.widget.setContentsMargins(0, 0, 0, 0)
-
         topOptions = QWidget()
         topOptions.setLayout(QHBoxLayout())
-        topOptions.layout().setSpacing(0)
-        topOptions.layout().setContentsMargins(0, 0, 0, 0)
         topOptions.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Maximum)
 
         self.widget.layout().addWidget(topOptions)
 
         row = QWidget()
         row.setLayout(QHBoxLayout())
-        row.setContentsMargins(0, 0, 0, 0)
-        row.layout().setSpacing(0)
         topOptions.layout().addWidget(row)
 
         col = QWidget()
         col.setLayout(QVBoxLayout())
-        col.setContentsMargins(0, 0, 0, 0)
-        col.layout().setSpacing(0)
         self.slotNumber = QSpinBox()
         col.layout().addWidget(QLabel(QApplication.translate("app", "Number of slots")))
         col.layout().addWidget(self.slotNumber)
-        self.slotNumber.valueChanged.connect(self.playerList.SetSlotNumber)
+        self.slotNumber.valueChanged.connect(
+            lambda val: self.playerList.SetSlotNumber(val))
         row.layout().addWidget(col)
 
         col = QWidget()
         col.setLayout(QVBoxLayout())
-        col.setContentsMargins(0, 0, 0, 0)
-        col.layout().setSpacing(0)
         self.playerPerTeam = QSpinBox()
         col.layout().addWidget(QLabel(QApplication.translate("app", "Players per slot")))
         col.layout().addWidget(self.playerPerTeam)
@@ -79,8 +71,6 @@ class TSHPlayerListWidget(QDockWidget):
 
         col = QWidget()
         col.setLayout(QVBoxLayout())
-        col.setContentsMargins(0, 0, 0, 0)
-        col.layout().setSpacing(0)
         self.charNumber = QSpinBox()
         col.layout().addWidget(QLabel(QApplication.translate("app", "Characters per player")))
         col.layout().addWidget(self.charNumber)
@@ -90,14 +80,18 @@ class TSHPlayerListWidget(QDockWidget):
 
         row = QWidget()
         row.setLayout(QHBoxLayout())
-        row.setContentsMargins(0, 0, 0, 0)
-        row.layout().setSpacing(0)
         topOptions.layout().addWidget(row)
 
         self.loadFromStandingsBt = QPushButton(
             QApplication.translate("app", "Load tournament standings"))
         self.loadFromStandingsBt.clicked.connect(self.LoadFromStandingsClicked)
         row.layout().addWidget(self.loadFromStandingsBt)
+
+        self.generateAltTextButton = QPushButton(
+            QApplication.translate("app", "Generate Descriptive Text for Results"))
+        self.generateAltTextButton = add_alt_text_tooltip_to_button(self.generateAltTextButton)
+        self.generateAltTextButton.clicked.connect(self.AltTextWindow)
+        row.layout().addWidget(self.generateAltTextButton)
 
         self.widget.layout().addWidget(self.playerList)
 
@@ -116,6 +110,32 @@ class TSHPlayerListWidget(QDockWidget):
         TSHTournamentDataProvider.instance.GetStandings(
             self.slotNumber.value(), self.signals.UpdateData)
 
+    def AltTextWindow(self):
+        def copy_text():
+            textbox.selectAll()
+            textbox.copy()
+
+        messagebox = QDialog()
+        messagebox.setWindowTitle(QApplication.translate(
+            "app", "Descriptive Text for Results"))
+        vbox = QVBoxLayout()
+        messagebox.setLayout(vbox)
+        textbox = QTextEdit()
+        text_data = generate_top_n_alt_text().strip("\n")
+        textbox.setText(text_data)
+        textbox.setReadOnly(True)
+        vbox.layout().addWidget(textbox)
+
+        hbox = QHBoxLayout()
+        vbox.layout().addLayout(hbox)
+
+        copyTextButton = QPushButton(
+            QApplication.translate("app", "Copy text"))
+        copyTextButton.clicked.connect(copy_text)
+        hbox.layout().addWidget(copyTextButton)
+
+        messagebox.exec()
+
     def LoadFromStandings(self, data):
         StateManager.BlockSaving()
         if data is not None and len(data) > 0:
@@ -127,5 +147,5 @@ class TSHPlayerListWidget(QDockWidget):
                     slot.SetTeamData(data[i])
                 except:
                     slot.Clear()
-                    print(traceback.format_exc())
+                    logger.error(traceback.format_exc())
         StateManager.ReleaseSaving()

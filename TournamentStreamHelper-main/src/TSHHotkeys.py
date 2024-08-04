@@ -1,25 +1,27 @@
 import re
 import unicodedata
-from PyQt5.QtCore import *
-from PyQt5.QtGui import *
-from PyQt5.QtWidgets import *
+from qtpy.QtCore import *
+from qtpy.QtGui import *
+from qtpy.QtWidgets import *
 import requests
 import os
+import platform
 import traceback
 import json
-import copy
 import pynput
 from .SettingsManager import SettingsManager
 from .Helpers.TSHLocaleHelper import TSHLocaleHelper
+from .Helpers.TSHDictHelper import deep_clone
+from loguru import logger
 
 class TSHHotkeysSignals(QObject):
-    team1_score_up = pyqtSignal()
-    team1_score_down = pyqtSignal()
-    team2_score_up = pyqtSignal()
-    team2_score_down = pyqtSignal()
-    reset_scores = pyqtSignal()
-    load_set = pyqtSignal()
-    swap_teams = pyqtSignal()
+    team1_score_up = Signal()
+    team1_score_down = Signal()
+    team2_score_up = Signal()
+    team2_score_down = Signal()
+    reset_scores = Signal()
+    load_set = Signal()
+    swap_teams = Signal()
 
 class TSHHotkeys(QObject):
     instance: "TSHHotkeys" = None
@@ -67,21 +69,25 @@ class TSHHotkeys(QObject):
         
         self.pynputListener = pynput.keyboard.GlobalHotKeys(shortcuts)
 
+        if platform.system() == "Darwin":
+            logger.error("macOS detected, deactivating hotkeys for now")
+            return
+
         self.pynputListener.start()
     
     def HotkeyTriggered(self, k, v):
         if not SettingsManager.Get("hotkeys.hotkeys_enabled", True) == False:
-            print(f"Activated {k} by pressing {v}")
+            logger.info(f"Activated {k} by pressing {v}")
             getattr(self.signals, k).emit()
     
     def LoadUserHotkeys(self):
         user_keys = SettingsManager.Get("hotkeys", {})
-        self.loaded_keys = copy.copy(self.keys)
+        self.loaded_keys = deep_clone(self.keys)
 
         # Update keys
         self.loaded_keys.update((k,v) for k,v in user_keys.items() if k in self.keys)
 
-        print("User hotkeys loaded")
+        logger.info("User hotkeys loaded")
     
     def qshortcut_to_pynput(qshortcut_str):
         try:
@@ -99,8 +105,8 @@ class TSHHotkeys(QObject):
 
             return "+".join(parts)
         except:
-            print(f"Could not convert qshortcut {qshortcut_str} to pynput")
-            print(traceback.format_exc())
+            logger.error(f"Could not convert qshortcut {qshortcut_str} to pynput")
+            logger.error(traceback.format_exc())
             return None
 
 TSHHotkeys.instance = TSHHotkeys()
