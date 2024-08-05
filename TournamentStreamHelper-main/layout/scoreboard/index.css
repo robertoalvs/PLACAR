@@ -83,17 +83,16 @@ body {
 .container {
   position: absolute;
   font-family: "Folktale";
-  font-weight: 400;
   overflow: hidden;
   display: flex;
   box-sizing: border-box;
   border-radius: var(--border-radius);
-  /*background-image: url(../scoreboard/logo-capcom01.jpg);*/
+  background-image: url(../scoreboard/logo-capcom01.jpg);
   /* background-color: rgb(22, 22, 78);*/
   background-color: rgb(12, 12, 54);
   align-items: center;
   /*color: rgb(243, 175, 17);*/
-  color: whitesmoke;
+  color: black;
 }
 
 .player.container {
@@ -1139,6 +1138,7 @@ body {
   border-top-right-radius: 0;
   border-top-left-radius: 0;
   height: 28px;
+  color: orange;
 }
 
 
@@ -1676,6 +1676,7 @@ body {
   margin-left: 6px;
   margin-top: 6px;
   border-left: 3px solid white;
+  color: black;
 }
 
 /* ============== play 2 placar number ==== */
@@ -1686,6 +1687,7 @@ body {
   margin-right: 6px;
   margin-top: 6px;
   border-right: 3px solid white;
+  color: black;
 }
 
 .sf6 .score {
