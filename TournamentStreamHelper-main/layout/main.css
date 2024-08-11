@@ -38,7 +38,7 @@
   height: 100%;
   gap: inherit;
   transform-origin: left;
-  
+  font-size: 1.5em;
 }
 
 /* Main theme -- Dark Gradient */
